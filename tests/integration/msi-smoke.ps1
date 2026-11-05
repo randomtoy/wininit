@@ -125,8 +125,12 @@ try {
     }
     $managedBy = Get-ItemPropertyValue -LiteralPath $installationKey -Name 'ManagedBy' -ErrorAction Stop
     if ($managedBy -ne 'MSI') { throw "Unexpected MSI management marker '$managedBy'." }
-    New-Item -Force -Path $stateKey | Out-Null
+    # The MSI marker already guarantees this key exists. New-Item -Force would
+    # replace the Registry key and erase both checkpoints and Installation.
     New-ItemProperty -LiteralPath $stateKey -Name $sentinelName -Value $sentinelValue -PropertyType String -Force | Out-Null
+    if ((Get-ItemPropertyValue -LiteralPath $installationKey -Name 'ManagedBy') -ne 'MSI') {
+        throw 'Adding the smoke-test sentinel changed the MSI ownership marker.'
+    }
 
     $service = Get-Service -Name 'wininit' -ErrorAction Stop
     $service.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Running, [TimeSpan]::FromSeconds(30))

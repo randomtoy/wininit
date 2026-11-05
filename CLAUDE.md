@@ -79,6 +79,8 @@ Do not create empty directories to imply unimplemented functionality.
   up every resource they create.
 - Windows security tests compare ACE types, masks, and SIDs rather than SDDL
   formatting; Windows can expand generic rights into numeric object rights.
+- Never use PowerShell `New-Item -Force` on an existing Registry key: it erases
+  values and subkeys. Add test sentinels with `New-ItemProperty` only.
 - Never add a fake implementation or a test which passes without exercising
   the behavior named by the test.
 
