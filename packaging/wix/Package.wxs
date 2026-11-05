@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Package Name="WinInit"
+           Manufacturer="WinInit contributors"
+           Version="$(var.MsiProductVersion)"
+           UpgradeCode="{B6E7B4A3-7C3B-4850-AE0B-3F8D1B8E72D9}"
+           Scope="perMachine"
+           InstallerVersion="500"
+           Compressed="yes">
+    <SummaryInformation Description="Windows cloud-init agent"
+                        Keywords="cloud-init,Windows,service" />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+    <MajorUpgrade Schedule="afterInstallInitialize"
+                  DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+
+    <util:QueryNativeMachine />
+    <Launch Condition="WIX_NATIVE_MACHINE = 34404"
+            Message="WinInit requires a native AMD64 (x64) Windows system." />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="WinInit" />
+    </StandardDirectory>
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="PROGRAMDATADIR" Name="WinInit">
+        <Directory Id="LOGSDIR" Name="logs" />
+        <Directory Id="PLUGINSDIR" Name="plugins" />
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="MainFeature" Title="WinInit" Level="1">
+      <ComponentRef Id="AgentComponent" />
+      <ComponentRef Id="InstallationMarkerComponent" />
+      <ComponentRef Id="ConfigurationComponent" />
+      <ComponentRef Id="LogsDirectoryComponent" />
+      <ComponentRef Id="PluginsDirectoryComponent" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <Component Id="AgentComponent"
+               Directory="INSTALLFOLDER"
+               Guid="{AC52B1A9-0F54-4F1D-81E4-E28E60FD47AD}">
+      <File Id="AgentExecutable" Source="$(var.SourceExe)" Name="wininit.exe" KeyPath="yes" />
+      <ServiceInstall Id="WinInitServiceInstall"
+                      Name="wininit"
+                      DisplayName="WinInit"
+                      Description="Windows guest initialization agent foundation."
+                      Type="ownProcess"
+                      Start="auto"
+                      ErrorControl="normal"
+                      Vital="yes" />
+      <ServiceControl Id="WinInitServiceControl"
+                      Name="wininit"
+                      Start="install"
+                      Stop="both"
+                      Remove="uninstall"
+                      Wait="yes" />
+    </Component>
+
+    <Component Id="InstallationMarkerComponent"
+               Directory="INSTALLFOLDER"
+               Guid="{CCCF490E-3A3F-4842-B915-909B88497DEE}">
+      <RegistryKey Root="HKLM"
+                   Key="SOFTWARE\Wininit\Installation"
+                   ForceDeleteOnUninstall="yes">
+        <RegistryValue Name="ManagedBy"
+                       Type="string"
+                       Value="MSI"
+                       KeyPath="yes" />
+      </RegistryKey>
+    </Component>
+
+    <Component Id="ConfigurationComponent"
+               Directory="PROGRAMDATADIR"
+               Guid="{6AEBA841-F60D-4431-BA60-AC80DCA3D6F0}"
+               NeverOverwrite="yes"
+               Permanent="yes">
+      <File Id="DefaultConfiguration"
+            Source="$(var.ConfigurationFile)"
+            Name="wininit.yaml"
+            KeyPath="yes" />
+    </Component>
+
+    <Component Id="LogsDirectoryComponent"
+               Directory="LOGSDIR"
+               Guid="{230DAAB9-6D37-4D20-84C4-503FF02773E0}"
+               Permanent="yes">
+      <CreateFolder />
+    </Component>
+
+    <Component Id="PluginsDirectoryComponent"
+               Directory="PLUGINSDIR"
+               Guid="{0CFA6AEA-3281-4082-85CF-80C48AA8C9F9}"
+               Permanent="yes">
+      <CreateFolder />
+    </Component>
+  </Fragment>
+</Wix>

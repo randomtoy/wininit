@@ -1,0 +1,18 @@
+<Project Sdk="WixToolset.Sdk/7.0.1">
+  <PropertyGroup>
+    <AcceptEula>wix7</AcceptEula>
+    <InstallerPlatform>x64</InstallerPlatform>
+    <MsiProductVersion Condition="'$(MsiProductVersion)' == ''">0.0.0</MsiProductVersion>
+    <SourceExe Condition="'$(SourceExe)' == ''">$(MSBuildThisFileDirectory)..\..\dist\wininit-windows-amd64.exe</SourceExe>
+    <ConfigurationFile Condition="'$(ConfigurationFile)' == ''">$(MSBuildThisFileDirectory)wininit.yaml</ConfigurationFile>
+    <OutputName>wininit-windows-amd64</OutputName>
+    <DebugType>none</DebugType>
+    <SuppressValidation>false</SuppressValidation>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <DefineConstants>$(DefineConstants);MsiProductVersion=$(MsiProductVersion);SourceExe=$(SourceExe);ConfigurationFile=$(ConfigurationFile)</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WixToolset.Util.wixext" Version="7.0.1" />
+  </ItemGroup>
+</Project>

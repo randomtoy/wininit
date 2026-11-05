@@ -1,0 +1,10 @@
+version: 1
+log:
+  level: info
+  directory: 'C:\ProgramData\WinInit\logs'
+state:
+  registry_path: 'SOFTWARE\Wininit'
+plugins:
+  directory: 'C:\ProgramData\WinInit\plugins'
+reboot:
+  policy: never
