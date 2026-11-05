@@ -6,5 +6,13 @@ state:
   registry_path: 'SOFTWARE\Wininit'
 plugins:
   directory: 'C:\ProgramData\WinInit\plugins'
+  datasources:
+    nocloud:
+      enabled: false
+      seed_directory: ''
+      discover_volumes: true
+  provisioners:
+    hostname:
+      enabled: false
 reboot:
   policy: never

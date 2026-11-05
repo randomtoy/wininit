@@ -12,6 +12,26 @@
 Go and documentation work can be done on Windows, Linux, or macOS. A successful
 Windows cross-build does not replace native Windows testing.
 
+The built-in NoCloud and hostname packages are independently testable behind
+small internal interfaces. Tests must cover default-disabled and explicitly
+disabled behavior, including a state checkpoint from an older enabled run.
+Configuration tests must prove that older version 1 files keep both plugins
+disabled. State tests must cover deterministic schema version 1 to version 2
+migration.
+
+Lifecycle tests must also verify one reconciliation per process start, no
+automatic retry loop, configuration-hash gating of saved status, fresh metadata
+after restart, and disablement precedence over pending work. State-store tests
+cover active-marker recovery, fail-closed future-schema behavior, and durable
+Registry save behavior. Windows lock tests cover protected private-namespace
+creation, protected permissions, contention, idempotent release from another
+goroutine, reacquisition, and recovery after a helper process abandons
+ownership. MSI smoke testing also starts a competing console lifecycle while
+the installed LocalSystem service runs and requires a clear contention error.
+An additional multi-process regression test verifies that a namespace creator
+can exit while another process owns the mutex without admitting a split lock.
+These Windows-specific checks execute in the elevated native CI job.
+
 ## Common commands
 
 ```bash
@@ -63,6 +83,12 @@ changing the Registry, SCM, or MSI state. The test suite must emit a clear,
 policy-consistent skip when elevation is optional and fail when an explicitly
 required release smoke test lacks elevation.
 
+Volume-discovery tests use controlled fakes plus a native read-only test which
+enumerates supported local volume labels and filesystem types without opening
+volume contents or mutating them. Windows hostname tests must not rename a
+shared CI host. Tests of the actual rename/restart path belong in disposable,
+licensed Windows Server guests.
+
 ## MSI smoke testing
 
 From an elevated Windows test environment:
@@ -101,6 +127,16 @@ workflow's uploaded failure diagnostics.
 ## Future VM tests
 
 Packer/QEMU or equivalent automation will create ephemeral Windows Server
-2022/2025 test guests from administrator-supplied media. The repository must
-never contain or download copyrighted Windows installation media or license
-keys.
+2022/2025 test guests from administrator-supplied media. It must validate
+mounted CIDATA discovery, hostname mutation, no automatic restart, an
+administrator-initiated restart, and active-name reconciliation. This real-VM
+validation is pending; the repository does not claim that a VM restart has been
+performed or tested. The repository must never contain or download
+copyrighted Windows installation media or license keys.
+
+Follow the concrete [NoCloud and hostname VM acceptance procedure](../tests/e2e/README.md)
+only on a disposable, licensed, non-domain-joined test VM. The procedure is
+currently pending and unexecuted because no suitable VM is available. Record
+the OS build, hypervisor, source commit, logs, and every acceptance result when
+it is eventually run; do not convert the written procedure itself into a claim
+of successful rename or restart validation.

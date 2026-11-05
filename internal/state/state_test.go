@@ -2,10 +2,47 @@ package state
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
 )
+
+func rawCheckpoint(t *testing.T, value State) []byte {
+	t.Helper()
+	payload, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(payload)
+	encoded, err := json.Marshal(envelope{Format: 1, Payload: payload, Checksum: hex.EncodeToString(sum[:])})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return encoded
+}
+
+func TestSchemaOneMigrationDoesNotInventProvisioningSuccess(t *testing.T) {
+	t.Parallel()
+	old := Initial(time.Now())
+	old.SchemaVersion = 1
+	old.InstanceID = "existing-instance"
+	got, err := decodeCheckpoint(rawCheckpoint(t, old))
+	if err != nil || got.SchemaVersion != 2 || got.InstanceID != old.InstanceID || got.Provisioning != "disabled" {
+		t.Fatalf("migrated=%#v err=%v", got, err)
+	}
+}
+
+func TestDecodeRejectsFutureSchema(t *testing.T) {
+	t.Parallel()
+	value := Initial(time.Now())
+	value.SchemaVersion++
+	if _, err := decodeCheckpoint(rawCheckpoint(t, value)); !errors.Is(err, ErrUnsupportedSchema) {
+		t.Fatalf("error = %v", err)
+	}
+}
 
 func TestCheckpointRoundTrip(t *testing.T) {
 	t.Parallel()

@@ -27,8 +27,11 @@ a stable maintainer and release process.
 - MVP artifacts are unsigned.
 - The service may run with elevated Windows privileges.
 - No external plugin execution is implemented in the foundation.
-- NoCloud, ConfigDrive, user-data, and provisioners are planned and must be
-  treated as untrusted-input boundaries when introduced.
+- NoCloud metadata and hostname provisioning are independent built-in plugins,
+  both disabled by default. NoCloud is restricted to local seeds and supported
+  CIDATA media; hostname mutation rejects domain-joined machines.
+- User-data is never opened or executed. ConfigDrive, additional provisioners,
+  and external executable plugins remain future trust boundaries.
 - Diagnostic archives are intended to contain only allowlisted, sanitized
   information, but reporters should inspect an archive before sharing it.
 

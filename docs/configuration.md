@@ -24,6 +24,14 @@ state:
   registry_path: 'SOFTWARE\Wininit'
 plugins:
   directory: 'C:\ProgramData\WinInit\plugins'
+  datasources:
+    nocloud:
+      enabled: false
+      seed_directory: ''
+      discover_volumes: true
+  provisioners:
+    hostname:
+      enabled: false
 reboot:
   policy: never
 ```
@@ -35,9 +43,13 @@ The complete serialized schema is:
 | `version` | Yes | Selects the schema; version 1 is the foundation schema. |
 | `log.level` | No | One of `debug`, `info`, `warn`, or `error`; defaults to `info`. |
 | `log.directory` | No | Location for service logs under ProgramData. |
-| `state.registry_path` | No | Path relative to HKLM; it must remain below `SOFTWARE\`. |
+| `state.registry_path` | No | Non-empty HKLM subkey below `SOFTWARE\`, dedicated to wininit state. |
 | `plugins.directory` | No | Reserved future plugin path; setting it does not enable plugins. |
-| `reboot.policy` | No | Must be `never` while reboot orchestration is not implemented. |
+| `plugins.datasources.nocloud.enabled` | No | Opts into the built-in NoCloud datasource; defaults to `false`. |
+| `plugins.datasources.nocloud.seed_directory` | No | Explicit seed directory; defaults to empty. |
+| `plugins.datasources.nocloud.discover_volumes` | No | Permits mounted `CIDATA` ISO9660/FAT discovery; defaults to `true`. |
+| `plugins.provisioners.hostname.enabled` | No | Opts into hostname mutation; defaults to `false`. |
+| `reboot.policy` | No | Must be `never`; restart is always administrator-controlled. |
 
 The default operational locations are conceptually:
 
@@ -50,6 +62,31 @@ State:         HKLM\SOFTWARE\Wininit
 
 The executable's help and distributed configuration are authoritative if a
 release changes a path.
+
+`state.registry_path` must identify a dedicated product/test subkey such as
+`SOFTWARE\Wininit`. Validation rejects the `SOFTWARE` root, empty paths, empty
+components, surrounding whitespace, slashes, and NUL. Administrators must not
+select a shared parent because checkpoint creation and recovery must never
+overlap unrelated Registry values.
+
+## Backward compatibility and enablement
+
+The built-in plugin additions do not change the configuration schema version.
+A pre-existing version 1 file with no `plugins.datasources` or
+`plugins.provisioners` section remains valid and leaves both plugins disabled.
+Installing or upgrading a new executable must not turn on metadata discovery or
+hostname mutation.
+
+Each `enabled` flag is authoritative for that plugin. Disabling NoCloud prevents
+seed discovery and metadata reads. Disabling hostname prevents rename and
+checkpoint reconciliation. Current configuration takes precedence over a
+pending checkpoint created when a plugin was enabled.
+
+When NoCloud is enabled, configure either a non-empty `seed_directory` or
+mounted-volume discovery. An explicit directory is the selected source; volume
+discovery accepts exactly one mounted `CIDATA` volume formatted as ISO9660 or
+FAT and fails on ambiguity. See [Built-in plugins](plugins.md) for complete
+enable and disable examples.
 
 ## Validation
 
@@ -66,7 +103,8 @@ not start provisioning.
 
 ## Sensitive values
 
-The foundation schema has no password, token, private-key, or raw user-data
-fields. Future sensitive values must not be written to lifecycle state, normal
-logs, status output, or diagnostic archives. Configuration sanitization must
-default to removal rather than relying only on field-name pattern matching.
+The schema has no password, token, private-key, or raw user-data fields. The
+NoCloud datasource never opens `user-data`. Future sensitive values must not be
+written to lifecycle state, normal logs, status output, or diagnostic archives.
+Configuration sanitization must default to removal rather than relying only on
+field-name pattern matching.

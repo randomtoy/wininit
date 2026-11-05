@@ -2,8 +2,8 @@
 
 ## Trust boundaries
 
-The Windows service may run as LocalSystem because future provisioning requires
-machine-wide changes. This makes every input and child process a privilege
+The Windows service may run as LocalSystem because hostname provisioning makes
+a machine-wide change. This makes every input and child process a privilege
 boundary. The following are untrusted even when provided by an administrator or
 cloud platform:
 
@@ -14,9 +14,16 @@ cloud platform:
 - external plugin binaries, protocol messages, and output; and
 - datasource media labels and filesystem structures.
 
-The foundation does not fetch metadata, execute user-data, or launch external
-plugins. Adding any of those changes the threat model and requires an ADR,
-tests, and an update to `CLAUDE.md`.
+The built-in NoCloud datasource reads only required `instance-id` and optional
+`local-hostname` from an explicitly selected seed directory or an unambiguous
+mounted `CIDATA` volume. It never opens or executes `user-data`. The agent does
+not launch external plugins. Expanding accepted metadata, opening user-data, or
+adding external execution changes the threat model and requires an ADR, tests,
+and an update to `CLAUDE.md`.
+
+Both built-in plugins are independently disabled by default. Current
+configuration disablement overrides pending state so an old checkpoint cannot
+reactivate discovery or mutation.
 
 ## Privileges and ACLs
 
@@ -24,7 +31,7 @@ The service receives only the privileges required by its current operations.
 Installed executable and default configuration should be protected against
 unprivileged modification. Writable logs and future working data live under a
 dedicated ProgramData directory and inherit Windows Installer-created system
-ACLs; explicit ACL hardening must precede any unprivileged writer or plugin
+ACLs; explicit ACL hardening must precede any unprivileged writer or external plugin
 execution. Lifecycle state lives in a dedicated HKLM Registry key and is not
 exposed directly to plugins.
 
@@ -53,13 +60,37 @@ schema versions, truncated state, and invalid transitions fail visibly. The
 agent never falls back to the in-memory store in production after a Registry
 failure.
 
-## Metadata and user-data roadmap
+Before platform mutation, the Registry store flushes the committed checkpoint
+with `RegFlushKey`. Because this can flush and block changes elsewhere in the
+hive, it is restricted to low-frequency lifecycle boundaries. Plugin state
+stores only a SHA-256 input identity; it does not retain the raw hostname or
+metadata required to replay an operation.
 
-Before datasource implementation, define input size limits, supported
-encodings, media traversal rules, parsing limits, precedence, and stable
-instance identity. Before PowerShell execution, define explicit enablement,
-execution policy, interpreter path, timeout, output limits, process-tree
-cleanup, reboot semantics, and audit behavior.
+The `WininitPrivate\Provisioning` mutex is held in a Windows private namespace
+whose boundary uses the Builtin Administrators SID without a session SID. A
+protected DACL grants namespace and mutex access only to SYSTEM and Builtin
+Administrators. It prevents an SCM service and an elevated console process—or
+two differently configured elevated processes in different sessions—from
+mutating the machine concurrently. A second process fails explicitly.
+
+## NoCloud and hostname controls
+
+NoCloud discovery never picks between multiple eligible volumes. An explicit
+seed directory avoids enumeration; discovery otherwise requires exactly one
+mounted volume labelled `CIDATA` with an ISO9660 or FAT filesystem. Query
+failures and unsupported filesystems on unrelated drives are skipped without
+opening their contents. The `meta-data` file must be regular and no larger than
+64 KiB; aliases, multiple YAML documents, excessive nesting, and duplicate keys
+are rejected. Raw metadata is not persisted or included in diagnostics.
+
+Hostname input is restricted to the documented conservative ASCII label. The
+agent refuses domain-joined rename and does not split or truncate an FQDN.
+`reboot.policy` remains `never`; LocalSystem records a restart checkpoint but
+never restarts the guest. The administrator controls restart timing.
+
+Before PowerShell execution, define explicit enablement, execution policy,
+interpreter path, timeout, output limits, process-tree cleanup, reboot semantics,
+and audit behavior.
 
 TLS verification and integrity checks must never be disabled merely to accept
 cloud metadata or make tests pass.

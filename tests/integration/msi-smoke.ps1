@@ -67,6 +67,27 @@ function Wait-ServiceAbsent {
     throw "Service '$Name' still exists after uninstall."
 }
 
+function Get-HostNameState {
+    $activePath = 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ActiveComputerName'
+    $pendingPath = 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName'
+    return [PSCustomObject]@{
+        Active  = (Get-ItemPropertyValue -LiteralPath $activePath -Name 'ComputerName' -ErrorAction Stop)
+        Pending = (Get-ItemPropertyValue -LiteralPath $pendingPath -Name 'ComputerName' -ErrorAction Stop)
+    }
+}
+
+function Assert-HostNameUnchanged {
+    param(
+        [Parameter(Mandatory)]$Expected,
+        [Parameter(Mandatory)][string]$Phase
+    )
+
+    $actual = Get-HostNameState
+    if ($actual.Active -ne $Expected.Active -or $actual.Pending -ne $Expected.Pending) {
+        throw "Host name changed during $Phase (active '$($Expected.Active)' -> '$($actual.Active)', pending '$($Expected.Pending)' -> '$($actual.Pending)')."
+    }
+}
+
 $expectedUpgradeCode = '{B6E7B4A3-7C3B-4850-AE0B-3F8D1B8E72D9}'
 $actualUpgradeCode = Get-MsiProperty -Path $MsiPath -Name 'UpgradeCode'
 if ($actualUpgradeCode -ne $expectedUpgradeCode) {
@@ -81,9 +102,11 @@ $existingService = Get-Service -Name 'wininit' -ErrorAction SilentlyContinue
 if ($null -ne $existingService) {
     throw 'A wininit service already exists. Refusing to alter a pre-existing installation.'
 }
+$originalHostName = Get-HostNameState
 
 $installed = $false
 $service = $null
+$contendedProcess = $null
 $stateKey = 'HKLM:\SOFTWARE\Wininit'
 $installationKey = Join-Path $stateKey 'Installation'
 $sentinelName = 'MsiSmokePreserve'
@@ -102,8 +125,12 @@ try {
     }
     $managedBy = Get-ItemPropertyValue -LiteralPath $installationKey -Name 'ManagedBy' -ErrorAction Stop
     if ($managedBy -ne 'MSI') { throw "Unexpected MSI management marker '$managedBy'." }
-    New-Item -Force -Path $stateKey | Out-Null
+    # The MSI marker already guarantees this key exists. New-Item -Force would
+    # replace the Registry key and erase both checkpoints and Installation.
     New-ItemProperty -LiteralPath $stateKey -Name $sentinelName -Value $sentinelValue -PropertyType String -Force | Out-Null
+    if ((Get-ItemPropertyValue -LiteralPath $installationKey -Name 'ManagedBy') -ne 'MSI') {
+        throw 'Adding the smoke-test sentinel changed the MSI ownership marker.'
+    }
 
     $service = Get-Service -Name 'wininit' -ErrorAction Stop
     $service.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Running, [TimeSpan]::FromSeconds(30))
@@ -123,6 +150,81 @@ try {
         throw "Version output '$versionOutput' does not contain '$ExpectedExecutableVersion'."
     }
 
+    $status = $null
+    $statusOutput = ''
+    $lifecycleReady = $false
+    $statusDeadline = [DateTime]::UtcNow.AddSeconds(10)
+    do {
+        $statusOutput = (& $executable status --json 2>&1 | Out-String).Trim()
+        if ($LASTEXITCODE -ne 0) { throw "wininit status --json failed: $statusOutput" }
+        try {
+            $status = $statusOutput | ConvertFrom-Json -ErrorAction Stop
+        }
+        catch {
+            throw "wininit status did not return valid JSON: $statusOutput"
+        }
+        $lifecycleProperty = $status.PSObject.Properties['lifecycle']
+        if ($null -ne $lifecycleProperty -and
+            $null -ne $lifecycleProperty.Value -and
+            $lifecycleProperty.Value.phase -eq 'agent_running') {
+            $lifecycleReady = $true
+            break
+        }
+        Start-Sleep -Milliseconds 250
+    } while ([DateTime]::UtcNow -lt $statusDeadline)
+    if (-not $lifecycleReady) {
+        throw "wininit service did not report lifecycle phase 'agent_running' within 10 seconds; last status: $statusOutput"
+    }
+    if ($status.service -ne 'running') {
+        throw "Status reported service '$($status.service)', expected 'running'."
+    }
+    if ($status.provisioning -ne 'disabled') {
+        throw "Status reported provisioning '$($status.provisioning)', expected 'disabled'."
+    }
+    $plugins = @($status.plugins)
+    if ($plugins.Count -ne 2) {
+        throw "Status reported $($plugins.Count) plugins, expected the disabled NoCloud datasource and hostname provisioner."
+    }
+    $noCloud = @($plugins | Where-Object { $_.name -eq 'nocloud' -and $_.kind -eq 'datasource' })
+    $hostname = @($plugins | Where-Object { $_.name -eq 'hostname' -and $_.kind -eq 'provisioner' })
+    if ($noCloud.Count -ne 1 -or $noCloud[0].enabled -ne $false) {
+        throw 'NoCloud datasource was not reported exactly once as disabled.'
+    }
+    if ($hostname.Count -ne 1 -or $hostname[0].enabled -ne $false) {
+        throw 'Hostname provisioner was not reported exactly once as disabled.'
+    }
+    if (@($plugins | Where-Object { $_.enabled }).Count -ne 0) {
+        throw 'The installer default configuration unexpectedly enabled a plugin.'
+    }
+    Assert-HostNameUnchanged -Expected $originalHostName -Phase 'install and service startup'
+
+    $contendedStdout = Join-Path $ArtifactsDirectory 'contended-run.stdout.log'
+    $contendedStderr = Join-Path $ArtifactsDirectory 'contended-run.stderr.log'
+    $contendedProcess = Start-Process -FilePath $executable `
+        -ArgumentList @('run') `
+        -RedirectStandardOutput $contendedStdout `
+        -RedirectStandardError $contendedStderr `
+        -NoNewWindow `
+        -PassThru
+    if (-not $contendedProcess.WaitForExit(10000)) {
+        $contendedProcess.Kill()
+        $contendedProcess.WaitForExit()
+        throw 'A contended foreground lifecycle process did not exit within 10 seconds; only that child process was terminated.'
+    }
+    $contendedProcess.WaitForExit()
+    if ($contendedProcess.ExitCode -eq 0) {
+        throw 'A second lifecycle process unexpectedly exited successfully while the LocalSystem service held the machine lock.'
+    }
+    $contendedOutput = @(
+        Get-Content -LiteralPath $contendedStdout -Raw -ErrorAction SilentlyContinue
+        Get-Content -LiteralPath $contendedStderr -Raw -ErrorAction SilentlyContinue
+    ) -join "`n"
+    if ($contendedOutput -notlike '*another wininit lifecycle process*') {
+        throw "Contended run did not report the expected machine-lock error: $contendedOutput"
+    }
+    $contendedProcess.Dispose()
+    $contendedProcess = $null
+
     Invoke-MsiExec -Arguments @('/x', $MsiPath, '/qn', '/norestart', '/l*v', $uninstallLog)
     $installed = $false
     Wait-ServiceAbsent -Name 'wininit'
@@ -139,10 +241,18 @@ try {
     if ($preservedValue -ne $sentinelValue) {
         throw 'A lifecycle-state sentinel was not preserved by uninstall.'
     }
+    Assert-HostNameUnchanged -Expected $originalHostName -Phase 'uninstall'
 
     Write-Host "MSI smoke test passed for ProductVersion $actualVersion."
 }
 finally {
+    if ($null -ne $contendedProcess) {
+        if (-not $contendedProcess.HasExited) {
+            $contendedProcess.Kill()
+            $contendedProcess.WaitForExit()
+        }
+        $contendedProcess.Dispose()
+    }
     if ($null -ne $service) {
         $service.Close()
     }

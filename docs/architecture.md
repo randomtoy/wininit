@@ -2,10 +2,11 @@
 
 ## Scope
 
-The foundation establishes a Windows Service/CLI process, configuration,
-lifecycle state, and diagnostics. It deliberately does not implement metadata
-discovery or provisioning. The architecture keeps those future responsibilities
-separate without committing to an unstable public interface.
+The agent provides a Windows Service/CLI process, configuration, lifecycle
+state, diagnostics, and an internal opt-in plugin pipeline. The current pipeline
+contains only a narrow NoCloud datasource and Windows hostname provisioner. The
+architecture separates those responsibilities without committing to an
+external or public plugin interface.
 
 ## Component view
 
@@ -17,15 +18,16 @@ Windows SCM / command-line user
         internal/app -------------- internal/diagnostics
               |
       internal/lifecycle ---------- internal/config
-              |
-         StateStore
-          /      \
-Windows Registry  in-memory test store
+         /         \
+ internal/plugin    StateStore
+    /       \        /      \
+NoCloud   hostname  Registry  memory
+ datasource provisioner       tests
 ```
 
-Future datasource, provisioner, and external-plugin managers will sit behind
-the application/lifecycle boundary. They are not present in the foundation and
-must not be inferred from the diagram.
+NoCloud and hostname are built-in implementation packages, not external
+processes. The external executable manager and protobuf/gRPC protocol remain
+future components and must not be inferred from the diagram.
 
 ## Process modes
 
@@ -50,10 +52,39 @@ The application is the composition root. It loads and validates configuration,
 constructs the platform-appropriate state store, loads existing lifecycle
 state, and runs the lifecycle engine until completion or cancellation.
 
-The foundation lifecycle engine tracks truthful agent state and errors. It
-does not mark provisioning complete because there are no datasources or
-provisioners. Lifecycle transitions are explicit and validated so that future
-reboot/resume behavior can extend them without accepting impossible states.
+The lifecycle engine tracks truthful agent state, per-plugin outcomes, and
+errors. The catalog constructs descriptors/objects for every known built-in,
+but constructors perform no I/O. The pipeline calls only plugins enabled by the
+current configuration. Datasource and provisioner enablement are independent.
+A disabled plugin is reported as disabled, not as executed or successful, and
+current configuration always overrides an old pending checkpoint.
+
+The service and foreground command acquire `WininitPrivate\Provisioning`, a
+mutex in a protected Windows private namespace, before running the engine. The
+namespace boundary contains the Builtin Administrators SID and deliberately no
+session SID, so the same object coordinates elevated callers across sessions.
+A protected DACL grants namespace and mutex access only to SYSTEM and Builtin
+Administrators. This prevents two processes from mutating the machine
+concurrently even when their configurations select different Registry paths.
+A competing process fails visibly rather than waiting or running a hidden retry
+loop.
+
+Windows mutex ownership belongs to the acquiring thread. A dedicated worker
+goroutine pins itself to an OS thread for wait, ownership, and release. An
+abandoned mutex is accepted as acquired because durable state reconciliation is
+the recovery mechanism. The public release operation is idempotent and may be
+called from another goroutine; it signals the owner thread to release and clean
+up the mutex handle. The protected namespace handle is retained for the process
+lifetime.
+
+The datasource stage runs before provisioners. The built-in NoCloud datasource
+returns a small internal metadata model containing required `instance-id` and
+optional `local-hostname`. If enabled, the hostname provisioner consumes that
+model, validates the target, compares the active computer name, and either does
+nothing idempotently, refuses the mutation, or requests the Windows rename.
+This reconciliation runs once per process start. A failure is retried only on a
+later service/process start; the lifecycle engine does not automatically retry
+or poll.
 
 ## Configuration
 
@@ -67,22 +98,62 @@ See [Configuration](configuration.md).
 
 ## Persistent state
 
-The production `StateStore` is backed by the Windows Registry. The lifecycle
-model includes a schema version, phase, instance identifier when known,
-attempt/reboot counters, future resume information, timestamps, and sanitized
-error metadata. It never includes passwords, tokens, private keys, or raw
-metadata/user-data.
+The production `StateStore` is backed by the Windows Registry. State schema
+version 2 includes lifecycle phase, instance identifier, plugin runtime state,
+attempt/reboot counters, restart/checkpoint information, timestamps, and
+sanitized error metadata. It never includes passwords, tokens, private keys, or
+raw metadata/user-data. A valid schema version 1 checkpoint is migrated to
+schema version 2 without interpreting absent plugin state as success or
+enablement.
 
 Registry updates do not have database-style transactions. A save therefore
 writes a complete serialized state to an inactive versioned checkpoint,
 validates that checkpoint, and only then changes the active checkpoint marker.
+On Windows it calls `RegFlushKey` on the committed key before returning. This
+ensures that the checkpoint saved before a platform mutation reached persistent
+Registry storage, rather than only the lazy-flush cache. The call is expensive
+and can flush other changes in the hive, so saves occur only at low-frequency
+lifecycle/plugin boundaries.
 Loading validates the active checkpoint and may recover from the most recent
 complete prior checkpoint. The store, rather than its callers, assigns a
 monotonically increasing generation to each save. Invalid data results in a
 visible error rather than an invented initial or successful state.
+An unsupported future schema in any checkpoint slot fails closed, even when an
+older understood slot is marked active. Loading does not choose the older
+checkpoint, and saving does not overwrite future state as though it were
+absent.
 
 An in-memory implementation supports deterministic unit tests and is not used
 as silent production fallback.
+
+## Built-in plugin pipeline
+
+Small internal `Datasource` and `Provisioner` contracts are defined for the
+application's needs. Implementations live separately under
+`plugins/datasource/nocloud` and `plugins/provisioner/hostname`. They are
+compiled into `wininit.exe`; `plugins.directory` is not scanned or executed.
+The pipeline itself lives in `internal/lifecycle`, while `internal/plugin`
+contains contracts and catalog types.
+
+NoCloud reads either an explicitly configured seed directory or exactly one
+eligible mounted `CIDATA` ISO9660/FAT volume. More than one candidate is an
+error, not a precedence choice. Query failures and unsupported filesystems on
+unrelated local drives are skipped rather than making them candidates. The
+discovery checkpoint remains pending until every enabled datasource candidate
+has returned unavailable. Only `instance-id` and `local-hostname` are in scope.
+`user-data` is never opened or run.
+
+Hostname validation accepts only a conservative 1–15 character ASCII label
+which is not all numeric. The provisioner refuses domain-joined hosts. Windows
+rename may require a restart, but `reboot.policy` remains `never`: the engine
+persists `reboot_required` and waits for an administrator to restart the guest.
+A later enabled run must rediscover the seed and compares the active/configured
+computer names with fresh metadata. Persistent state stores the normalized
+input SHA-256 only, not the raw target hostname. The seed must therefore remain
+accessible through restart. Changed metadata is reconciled as new input; an
+unavailable seed reports `no_datasource` rather than replaying old input.
+
+See [Built-in plugins](plugins.md) and [ADR 0009](adr/0009-opt-in-built-in-provisioning-plugins.md).
 
 ## Windows service behavior
 
@@ -91,6 +162,10 @@ states as appropriate. Stop and system shutdown controls cancel the root
 context. The service waits on cancellation or owned lifecycle work; it does not
 use a busy loop. Startup and shutdown failures are logged and propagated to the
 SCM where the platform API permits.
+
+An error is treated as a clean shutdown cancellation only when its cause is the
+root context cancellation. A plugin, platform, or state failure is not hidden
+merely because cancellation happened concurrently.
 
 ## Logging and diagnostics
 
@@ -103,10 +178,6 @@ directories.
 
 ## Planned component boundaries
 
-- **Datasource manager:** discovers candidates, selects one deterministically,
-  and returns validated metadata through an internal model.
-- **Provisioner manager:** executes idempotent operations with durable
-  checkpoints and explicit reboot decisions.
 - **External plugin manager:** launches verified, version-compatible processes
   with deadlines, cancellation, controlled logs, and deliberate privileges.
 - **Plugin protocol and Go SDK:** versioned protobuf/gRPC contracts exposed only

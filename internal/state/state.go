@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-const CurrentSchemaVersion = 1
+const CurrentSchemaVersion = 2
 
 var (
 	ErrNotFound          = errors.New("state not found")
@@ -32,17 +32,28 @@ type ErrorMetadata struct {
 	OccurredAt time.Time `json:"occurred_at"`
 }
 
+// PluginState is a non-sensitive operation checkpoint. InputHash identifies
+// normalized plugin input without retaining raw metadata or user-data.
+type PluginState struct {
+	Status         string `json:"status"`
+	InputHash      string `json:"input_hash,omitempty"`
+	RebootRequired bool   `json:"reboot_required"`
+}
+
 // State deliberately excludes credentials and raw metadata/user-data.
 type State struct {
-	SchemaVersion int            `json:"schema_version"`
-	Generation    uint64         `json:"generation"`
-	InstanceID    string         `json:"instance_id,omitempty"`
-	Phase         Phase          `json:"phase"`
-	Attempts      map[string]int `json:"attempts,omitempty"`
-	RebootCount   int            `json:"reboot_count"`
-	Checkpoint    string         `json:"checkpoint,omitempty"`
-	LastError     *ErrorMetadata `json:"last_error,omitempty"`
-	UpdatedAt     time.Time      `json:"updated_at"`
+	SchemaVersion     int                    `json:"schema_version"`
+	Generation        uint64                 `json:"generation"`
+	InstanceID        string                 `json:"instance_id,omitempty"`
+	Phase             Phase                  `json:"phase"`
+	Attempts          map[string]int         `json:"attempts,omitempty"`
+	RebootCount       int                    `json:"reboot_count"`
+	Checkpoint        string                 `json:"checkpoint,omitempty"`
+	LastError         *ErrorMetadata         `json:"last_error,omitempty"`
+	UpdatedAt         time.Time              `json:"updated_at"`
+	Provisioning      string                 `json:"provisioning,omitempty"`
+	ConfigurationHash string                 `json:"configuration_hash,omitempty"`
+	Plugins           map[string]PluginState `json:"plugins,omitempty"`
 }
 
 func Initial(now time.Time) State {
@@ -64,6 +75,16 @@ func (s State) Validate() error {
 	for name, attempts := range s.Attempts {
 		if name == "" || attempts < 0 {
 			return fmt.Errorf("invalid attempt counter %q=%d", name, attempts)
+		}
+	}
+	for name, checkpoint := range s.Plugins {
+		if name == "" {
+			return errors.New("plugin checkpoint requires a name")
+		}
+		switch checkpoint.Status {
+		case "disabled", "pending", "running", "completed", "reboot_required", "failed", "skipped":
+		default:
+			return fmt.Errorf("invalid plugin checkpoint status %q", checkpoint.Status)
 		}
 	}
 	return nil

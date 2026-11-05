@@ -19,12 +19,13 @@ import (
 	"github.com/randomtoy/wininit/internal/diagnostics"
 	"github.com/randomtoy/wininit/internal/lifecycle"
 	"github.com/randomtoy/wininit/internal/logging"
+	"github.com/randomtoy/wininit/internal/plugin"
 	"github.com/randomtoy/wininit/internal/service"
 	"github.com/randomtoy/wininit/internal/state"
 	"github.com/randomtoy/wininit/internal/version"
 )
 
-const usage = `wininit - Windows initialization agent foundation
+const usage = `wininit - Windows initialization agent
 
 Usage:
   wininit version [--json]
@@ -34,17 +35,18 @@ Usage:
   wininit collect-logs [--config PATH] [--output PATH]
   wininit service install|uninstall|start|stop|status
 
-The current foundation does not implement VM provisioning.
+NoCloud and hostname plugins require explicit enablement in configuration.
 MSI-managed installations must use MSI repair/uninstall for registration changes.
 `
 
 type Status struct {
-	Service      string       `json:"service"`
-	Lifecycle    *state.State `json:"lifecycle,omitempty"`
-	Provisioning string       `json:"provisioning"`
-	Build        version.Info `json:"build"`
-	StateError   string       `json:"state_error,omitempty"`
-	ServiceError string       `json:"service_error,omitempty"`
+	Service      string              `json:"service"`
+	Lifecycle    *state.State        `json:"lifecycle,omitempty"`
+	Provisioning string              `json:"provisioning"`
+	Build        version.Info        `json:"build"`
+	Plugins      []plugin.Descriptor `json:"plugins"`
+	StateError   string              `json:"state_error,omitempty"`
+	ServiceError string              `json:"service_error,omitempty"`
 }
 
 // Execute runs a CLI command and returns a process exit code.
@@ -93,8 +95,17 @@ func RunService() error {
 	}
 	defer closer.Close()
 	store := state.NewRegistryStore(cfg.State.RegistryPath)
-	engine := lifecycle.New(store, logger)
-	return service.Run(logger, engine.Run)
+	engine := lifecycle.NewWithPlugins(store, logger, configuredPlugins(cfg), pluginConfigurationHash(cfg))
+	return service.Run(logger, func(ctx context.Context) error {
+		logger.InfoContext(ctx, "acquiring lifecycle lock")
+		release, err := state.AcquireMachineLock(ctx)
+		if err != nil {
+			return err
+		}
+		defer release()
+		logger.InfoContext(ctx, "lifecycle lock acquired")
+		return engine.Run(ctx)
+	})
 }
 
 func commandVersion(args []string, stdout, stderr io.Writer) error {
@@ -148,7 +159,12 @@ func commandRun(ctx context.Context, args []string, stderr io.Writer) error {
 		return err
 	}
 	defer closer.Close()
-	return lifecycle.New(state.NewRegistryStore(cfg.State.RegistryPath), logger).Run(ctx)
+	release, err := state.AcquireMachineLock(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	return lifecycle.NewWithPlugins(state.NewRegistryStore(cfg.State.RegistryPath), logger, configuredPlugins(cfg), pluginConfigurationHash(cfg)).Run(ctx)
 }
 
 func commandStatus(ctx context.Context, args []string, stdout, stderr io.Writer) error {
@@ -172,6 +188,9 @@ func commandStatus(ctx context.Context, args []string, stdout, stderr io.Writer)
 		}
 	} else {
 		fmt.Fprintf(stdout, "Service: %s\nProvisioning: %s\n", report.Service, report.Provisioning)
+		for _, descriptor := range report.Plugins {
+			fmt.Fprintf(stdout, "Plugin %s (%s): enabled=%t, status=%s\n", descriptor.Name, descriptor.Kind, descriptor.Enabled, descriptor.Status)
+		}
 		if report.Lifecycle == nil {
 			fmt.Fprintln(stdout, "Lifecycle: uninitialized")
 		} else {
@@ -256,7 +275,7 @@ func commandService(ctx context.Context, args []string, stdout io.Writer) error 
 }
 
 func collectStatus(ctx context.Context, cfg config.Config) Status {
-	report := Status{Provisioning: "not_implemented", Build: version.Current()}
+	report := Status{Provisioning: configuredProvisioning(cfg), Build: version.Current(), Plugins: configuredPlugins(cfg).Descriptors()}
 	serviceState, serviceErr := service.NewManager().Status(ctx)
 	report.Service = serviceState
 	if serviceErr != nil {
@@ -265,10 +284,25 @@ func collectStatus(ctx context.Context, cfg config.Config) Status {
 	lifecycleState, stateErr := state.NewRegistryStore(cfg.State.RegistryPath).Load(ctx)
 	if stateErr == nil {
 		report.Lifecycle = &lifecycleState
+		applySavedPluginStatus(&report, lifecycleState, pluginConfigurationHash(cfg))
 	} else if !errors.Is(stateErr, state.ErrNotFound) {
 		report.StateError = stateErr.Error()
 	}
 	return report
+}
+
+func applySavedPluginStatus(report *Status, current state.State, configurationHash string) {
+	if report.Provisioning == "disabled" || current.ConfigurationHash != configurationHash || current.Provisioning == "" {
+		return
+	}
+	report.Provisioning = current.Provisioning
+	for index := range report.Plugins {
+		if report.Plugins[index].Enabled {
+			if checkpoint, ok := current.Plugins[report.Plugins[index].Name]; ok {
+				report.Plugins[index].Status = checkpoint.Status
+			}
+		}
+	}
 }
 
 func newFlagSet(name string, stderr io.Writer) *flag.FlagSet {

@@ -8,22 +8,32 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/randomtoy/wininit/internal/plugin"
 	"github.com/randomtoy/wininit/internal/state"
 )
 
 type Engine struct {
-	store  state.Store
-	logger *slog.Logger
-	now    func() time.Time
+	store             state.Store
+	logger            *slog.Logger
+	now               func() time.Time
+	catalog           plugin.Catalog
+	configurationHash string
 }
 
 func New(store state.Store, logger *slog.Logger) *Engine {
 	return &Engine{store: store, logger: logger, now: time.Now}
 }
 
-// Run records that the agent foundation is active, then waits for cancellation.
-// It intentionally performs and claims no provisioning work.
+func NewWithPlugins(store state.Store, logger *slog.Logger, catalog plugin.Catalog, configurationHash string) *Engine {
+	engine := New(store, logger)
+	engine.catalog, engine.configurationHash = catalog, configurationHash
+	return engine
+}
+
+// Run reconciles enabled plugins once, then waits for cancellation. A restart
+// retries failed work and checks pending changes against actual platform state.
 func (e *Engine) Run(ctx context.Context) error {
+	e.logger.InfoContext(ctx, "loading lifecycle checkpoint")
 	current, err := e.store.Load(ctx)
 	if errors.Is(err, state.ErrNotFound) {
 		current = state.Initial(e.now())
@@ -36,10 +46,25 @@ func (e *Engine) Run(ctx context.Context) error {
 	current.Phase = state.PhaseAgentRunning
 	current.LastError = nil
 	current.UpdatedAt = e.now().UTC()
+	e.logger.InfoContext(ctx, "saving running lifecycle checkpoint")
 	if err := e.store.Save(ctx, current); err != nil {
 		return fmt.Errorf("save running lifecycle state: %w", err)
 	}
-	e.logger.InfoContext(ctx, "lifecycle foundation started", "provisioning", "not_implemented")
+	e.logger.InfoContext(ctx, "running lifecycle checkpoint saved")
+	if err := e.reconcile(ctx, &current); err != nil {
+		if ctx.Err() == nil || (!errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)) {
+			return fmt.Errorf("reconcile plugins: %w", err)
+		}
+		current.Provisioning = "pending"
+		current.LastError = nil
+		for name, checkpoint := range current.Plugins {
+			if checkpoint.Status == "running" || checkpoint.Status == "failed" {
+				checkpoint.Status = "pending"
+				current.Plugins[name] = checkpoint
+			}
+		}
+	}
+	e.logger.InfoContext(ctx, "lifecycle started", "provisioning", current.Provisioning)
 
 	<-ctx.Done()
 	stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

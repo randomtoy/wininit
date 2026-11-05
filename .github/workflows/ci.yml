@@ -106,14 +106,21 @@ jobs:
             -ExpectedMsiVersion '${{ steps.package.outputs.version }}' `
             -ExpectedExecutableVersion '${{ steps.package.outputs.version }}' `
             -ArtifactsDirectory ./artifacts
+      - name: Stage MSI diagnostics on failure
+        if: failure()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path ./artifacts/agent-logs | Out-Null
+          if (Test-Path -LiteralPath C:/ProgramData/WinInit/logs) {
+            Copy-Item C:/ProgramData/WinInit/logs/*.log ./artifacts/agent-logs/ -ErrorAction Stop
+            Get-Content C:/ProgramData/WinInit/logs/wininit.log -Tail 100
+          }
       - name: Upload MSI diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: windows-failure-diagnostics-${{ github.run_id }}
-          path: |
-            artifacts/**
-            C:/ProgramData/WinInit/logs/**
+          path: artifacts/**
           if-no-files-found: ignore
           retention-days: 14
       - name: Upload Windows release artifacts
