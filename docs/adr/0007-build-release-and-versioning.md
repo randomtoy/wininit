@@ -15,7 +15,8 @@ Build Windows AMD64 first with deterministic Go flags where practical. Inject
 version, commit, and build timestamp/source date through linker flags. Map
 accepted release tags deterministically to MSI-compatible numeric versions and
 reject ambiguous or out-of-range input. Produce the EXE, MSI, and SHA-256
-checksums from the release workflow. Do not use UPX.
+checksums from the release workflow. Write the checksum manifest as UTF-8
+without a byte-order mark and with portable LF line endings. Do not use UPX.
 
 MVP artifacts are unsigned and documented as such. Signing, provenance, and
 SBOM publication remain release-hardening work.

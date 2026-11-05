@@ -22,5 +22,8 @@ $lines = foreach ($name in $artifactNames) {
 }
 
 $output = Join-Path $DistDirectory 'SHA256SUMS'
-[IO.File]::WriteAllLines($output, $lines, [Text.UTF8Encoding]::new($false))
+# Checksum manifests are consumed on Windows and Unix. Use canonical LF line
+# endings instead of the host platform newline so filenames remain portable.
+$content = ($lines -join "`n") + "`n"
+[IO.File]::WriteAllText($output, $content, [Text.UTF8Encoding]::new($false))
 Write-Host "Wrote $output"

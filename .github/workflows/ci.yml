@@ -97,6 +97,7 @@ jobs:
           $version = "0.0.$build"
           "version=$version" >> $env:GITHUB_OUTPUT
           ./scripts/package.ps1 -Version $version
+          ./tests/integration/checksums.ps1 -DistDirectory ./dist
       - name: Exercise silent MSI install and uninstall
         shell: pwsh
         run: |

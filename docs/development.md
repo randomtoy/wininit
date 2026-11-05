@@ -28,6 +28,9 @@ release-style Windows target and produces the executable, MSI, and
 `SHA256SUMS`. Consult the build script output if the local WiX dependency is
 missing or has the wrong version.
 
+Packaging also verifies that `SHA256SUMS` matches both artifacts and uses
+portable LF line endings.
+
 The WiX project contains `<AcceptEula>wix7</AcceptEula>`, the acknowledgement
 required to use the WiX 7 build. Every builder and redistributor is independently
 responsible for reviewing and complying with the current WiX Open Source

@@ -160,6 +160,8 @@ default.
 - Use MSI-native service registration and control with stable component GUIDs
   and a stable UpgradeCode.
 - Map release versions deterministically to MSI-compatible numeric versions.
+- Write `SHA256SUMS` as UTF-8 without a byte-order mark and with LF line
+  endings so standard Windows and Unix verification tools agree.
 - Preserve operational state and administrator-owned configuration through
   upgrades and ordinary uninstall.
 - ProgramData currently inherits Windows Installer-created system ACLs;
