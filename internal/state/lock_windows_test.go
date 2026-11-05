@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
@@ -53,7 +54,8 @@ func TestPrivateNamespaceSurvivesCreatorExitWithoutSplitLock(t *testing.T) {
 		_ = owner.Wait()
 		t.Fatalf("namespace contender was not excluded after creator exit: %v, output=%q", err, output)
 	}
-	if strings.TrimSpace(string(output)) != "blocked" {
+	response := bufio.NewScanner(bytes.NewReader(output))
+	if !response.Scan() || response.Text() != "blocked" {
 		_ = ownerInput.Close()
 		_ = owner.Wait()
 		t.Fatalf("unexpected namespace contender output %q", output)
@@ -165,11 +167,27 @@ func TestMachineLockUsesProtectedSystemAdministratorsDACL(t *testing.T) {
 	if control&windows.SE_DACL_PROTECTED == 0 {
 		t.Fatal("mutex DACL inherits permissions")
 	}
-	sddl := descriptor.String()
-	for _, ace := range []string{"(A;;GA;;;SY)", "(A;;GA;;;BA)"} {
-		if !strings.Contains(sddl, ace) {
-			t.Fatalf("mutex security descriptor %q does not contain %s", sddl, ace)
+	dacl, _, err := descriptor.DACL()
+	if err != nil || dacl == nil {
+		t.Fatalf("read mutex DACL: %v", err)
+	}
+	if dacl.AceCount != 2 {
+		t.Fatalf("mutex grants access to %d principals, want SYSTEM and Administrators only", dacl.AceCount)
+	}
+	principals := map[string]bool{"S-1-5-18": false, "S-1-5-32-544": false}
+	for index := uint32(0); index < uint32(dacl.AceCount); index++ {
+		var ace *windows.ACCESS_ALLOWED_ACE
+		if err := windows.GetAce(dacl, index, &ace); err != nil {
+			t.Fatal(err)
 		}
+		if ace.Header.AceType != windows.ACCESS_ALLOWED_ACE_TYPE || uint32(ace.Mask) != windows.MUTEX_ALL_ACCESS {
+			t.Fatalf("unexpected mutex ACE type=%d mask=%#x", ace.Header.AceType, ace.Mask)
+		}
+		sid := (*windows.SID)(unsafe.Pointer(&ace.SidStart)).String()
+		if seen, ok := principals[sid]; !ok || seen {
+			t.Fatalf("unexpected or duplicate mutex principal %q", sid)
+		}
+		principals[sid] = true
 	}
 }
 

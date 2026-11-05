@@ -76,6 +76,8 @@ Do not create empty directories to imply unimplemented functionality.
 - Prefer table-driven tests where they clarify multiple cases.
 - Use temporary directories and unique Registry test keys. Tests own and clean
   up every resource they create.
+- Windows security tests compare ACE types, masks, and SIDs rather than SDDL
+  formatting; Windows can expand generic rights into numeric object rights.
 - Never add a fake implementation or a test which passes without exercising
   the behavior named by the test.
 
