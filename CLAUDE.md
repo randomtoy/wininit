@@ -183,6 +183,9 @@ default.
   permissions, produce EXE/MSI/checksums, and publish those exact artifacts.
 - Pin third-party actions to immutable commits where practical and keep them
   current through dependency automation.
+- The Windows jobs currently use `actions/setup-dotnet` 6.1.0 to install the
+  .NET 10 SDK used by the pinned WiX build; action-major updates require a full
+  Windows MSI smoke run.
 - A GitHub-hosted Windows runner does not prove Windows Server 2022 or 2025 VM
   compatibility.
 
