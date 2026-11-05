@@ -71,8 +71,9 @@ Do not create empty directories to imply unimplemented functionality.
   is authoritative.
 - Format all Go sources with `gofmt`.
 - Wrap errors with useful operation context and preserve the underlying error.
-- Avoid global mutable state. Build information set by linker flags is the
-  narrow exception.
+- Avoid global mutable state. Narrow exceptions are build information set by
+  linker flags and `sync.Once` initialization of process-lifetime Windows
+  resources such as the protected private namespace.
 - Prefer table-driven tests where they clarify multiple cases.
 - Use temporary directories and unique Registry test keys. Tests own and clean
   up every resource they create.
@@ -231,7 +232,8 @@ default. `plugins.directory` is reserved and does not authorize execution.
   thread must wait for, own, and release the mutex. Accept abandoned ownership
   as successful acquisition so Registry checkpoints can drive recovery.
 - Release must be idempotent and callable from any goroutine, while the pinned
-  owner thread performs `ReleaseMutex` and handle/namespace cleanup.
+  owner thread performs `ReleaseMutex` and closes the mutex handle. The private
+  namespace handle is retained until process termination.
 - The lock applies regardless of the configured Registry state path. Do not
   weaken it to a per-key or per-configuration lock. A second process must fail
   clearly rather than run concurrently or wait in a hidden retry loop.
@@ -259,7 +261,7 @@ default. `plugins.directory` is reserved and does not authorize execution.
 - Preserve operational state and administrator-owned configuration through
   upgrades and ordinary uninstall.
 - ProgramData currently inherits Windows Installer-created system ACLs;
-  explicitly review and harden ACLs before adding plugins or unprivileged
+  explicitly review and harden ACLs before adding external plugins or unprivileged
   writers.
 - Do not add the install directory to the machine-wide `PATH`.
 - Unsigned artifacts are acceptable only while the MVP documentation states

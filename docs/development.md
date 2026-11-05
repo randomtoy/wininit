@@ -28,6 +28,8 @@ creation, protected permissions, contention, idempotent release from another
 goroutine, reacquisition, and recovery after a helper process abandons
 ownership. MSI smoke testing also starts a competing console lifecycle while
 the installed LocalSystem service runs and requires a clear contention error.
+An additional multi-process regression test verifies that a namespace creator
+can exit while another process owns the mutex without admitting a split lock.
 These Windows-specific checks execute in the elevated native CI job.
 
 ## Common commands

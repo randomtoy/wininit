@@ -31,7 +31,7 @@ The service receives only the privileges required by its current operations.
 Installed executable and default configuration should be protected against
 unprivileged modification. Writable logs and future working data live under a
 dedicated ProgramData directory and inherit Windows Installer-created system
-ACLs; explicit ACL hardening must precede any unprivileged writer or plugin
+ACLs; explicit ACL hardening must precede any unprivileged writer or external plugin
 execution. Lifecycle state lives in a dedicated HKLM Registry key and is not
 exposed directly to plugins.
 
