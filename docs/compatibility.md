@@ -24,7 +24,8 @@ guests. It also does not test the Windows Server 2022 target.
 | --- | --- |
 | QEMU/KVM guest operation | Target; real-VM testing planned |
 | OpenStack guest operation | Target; real-cloud testing planned |
-| NoCloud datasource | Planned |
+| NoCloud explicit seed directory | Implemented; disabled by default |
+| Mounted `CIDATA` ISO9660/FAT discovery | Implemented on Windows; disabled by default |
 | OpenStack ConfigDrive datasource | Planned |
 | Metadata network service | Not in foundation scope |
 
@@ -32,13 +33,22 @@ guests. It also does not test the Windows Server 2022 target.
 
 | Capability | Status |
 | --- | --- |
-| Hostname | Planned next milestone |
+| Hostname | Implemented conservatively; disabled by default |
 | Users and groups | Planned |
 | Password policy | Planned |
 | SSH authorized keys | Planned |
 | PowerShell user-data | Planned |
-| Reboot/resume provisioning | Planned |
+| Hostname restart checkpoint/reconciliation | Implemented; no automatic restart |
 | External plugins | Planned; no stable protocol yet |
+
+NoCloud currently accepts required `instance-id` and optional
+`local-hostname` only. User-data is not opened or executed. Hostname mutation
+accepts only the documented 1–15 character ASCII label and refuses a
+domain-joined host.
+
+Unit and native Windows integration tests do not yet establish full product
+compatibility. Real Windows Server 2022/2025 guest validation of CIDATA
+discovery, rename, administrator restart, and resume reconciliation is pending.
 
 ## Artifacts
 

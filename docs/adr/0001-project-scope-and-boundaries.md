@@ -13,15 +13,19 @@ would obscure which compatibility behavior is intentional.
 
 Build an independent Go agent. The foundation contains service/CLI hosting,
 configuration, lifecycle state, diagnostics, and packaging. Datasources,
-provisioners, and external plugins remain separate future components. Internal
-implementation stays under `internal`; public packages require a stable external
-consumer.
+provisioners, and external plugins remain separate component boundaries.
+ADR 0009 later adds two built-in implementation packages without making those
+boundaries public; external process plugins remain future work. Internal
+implementation stays under `internal`; public packages require a stable
+external consumer.
 
 ## Consequences
 
-The foundation is operational but does not provision a VM. Compatibility must
-be earned through fixtures and real-VM tests. Status and documentation must
-distinguish agent health from provisioning success.
+The original foundation is operational without provisioning. ADR 0009 extends
+it with independently opt-in built-in NoCloud and hostname implementations;
+external plugin APIs remain out of scope. Compatibility must be earned through
+fixtures and real-VM tests. Status and documentation must distinguish agent
+health, plugin enablement, restart-required state, and provisioning completion.
 
 ## Alternatives considered
 

@@ -83,6 +83,42 @@ func TestDefaultIsValid(t *testing.T) {
 	}
 }
 
+func TestPluginsAreOptInForExistingConfiguration(t *testing.T) {
+	t.Parallel()
+	cfg, err := Load(writeConfig(t, "version: 1\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Plugins.Datasources.NoCloud.Enabled || cfg.Plugins.Provisioners.Hostname.Enabled {
+		t.Fatal("old configuration silently enabled plugins")
+	}
+}
+
+func TestDisabledPluginOptionsDoNotRequireUsableSource(t *testing.T) {
+	t.Parallel()
+	cfg := Default()
+	cfg.Plugins.Datasources.NoCloud.DiscoverVolumes = false
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("disabled plugin requires a source: %v", err)
+	}
+	cfg.Plugins.Datasources.NoCloud.Enabled = true
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("enabled plugin accepted no source")
+	}
+	cfg.Plugins.Datasources.NoCloud.SeedDirectory = t.TempDir()
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPluginConfigurationRejectsMisspelledNames(t *testing.T) {
+	t.Parallel()
+	_, err := Load(writeConfig(t, "version: 1\nplugins:\n  provisioners:\n    hostnmae:\n      enabled: true\n"))
+	if err == nil {
+		t.Fatal("unknown plugin name accepted")
+	}
+}
+
 func writeConfig(t *testing.T, content string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "wininit.yaml")

@@ -6,9 +6,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"syscall"
 
+	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )
+
+var regFlushKey = windows.NewLazySystemDLL("advapi32.dll").NewProc("RegFlushKey")
 
 const (
 	activeValue = "ActiveCheckpoint"
@@ -45,6 +49,8 @@ func (s *RegistryStore) Load(ctx context.Context) (State, error) {
 	if activeErr == nil {
 		if value, err := loadSlot(key, active); err == nil {
 			return value, nil
+		} else if errors.Is(err, ErrUnsupportedSchema) {
+			return State{}, err
 		}
 	}
 	value, ok := highestValid(key)
@@ -52,7 +58,11 @@ func (s *RegistryStore) Load(ctx context.Context) (State, error) {
 		return value, nil
 	}
 	if errors.Is(activeErr, registry.ErrNotExist) {
-		return State{}, ErrNotFound
+		_, _, firstErr := key.GetBinaryValue(slotAValue)
+		_, _, secondErr := key.GetBinaryValue(slotBValue)
+		if errors.Is(firstErr, registry.ErrNotExist) && errors.Is(secondErr, registry.ErrNotExist) {
+			return State{}, ErrNotFound
+		}
 	}
 	return State{}, fmt.Errorf("%w: no valid Registry checkpoint", ErrCorrupt)
 }
@@ -105,6 +115,13 @@ func (s *RegistryStore) Save(ctx context.Context, value State) error {
 	}
 	if err := key.SetStringValue(activeValue, target); err != nil {
 		return fmt.Errorf("activate registry checkpoint: %w", err)
+	}
+	// The lifecycle relies on Save returning before a platform mutation. Flush
+	// the committed marker and checkpoint to disk rather than only the Registry
+	// cache. This is expensive but saves occur only at lifecycle boundaries.
+	result, _, _ := regFlushKey.Call(uintptr(key))
+	if result != 0 {
+		return fmt.Errorf("flush registry checkpoint: %w", syscall.Errno(result))
 	}
 	return nil
 }

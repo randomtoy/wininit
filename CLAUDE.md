@@ -3,14 +3,15 @@
 ## Project mission and current scope
 
 `wininit` is an independent Go implementation of a Windows initialization
-agent for Windows Server 2022 and 2025 guests on QEMU/KVM and OpenStack. The
-foundation consists of one Windows Service/CLI executable, a small lifecycle
-engine, versioned configuration, Registry-backed persistent state,
-diagnostics, Windows packaging, and CI.
+agent for Windows Server 2022 and 2025 guests on QEMU/KVM and OpenStack. It
+consists of one Windows Service/CLI executable, a lifecycle pipeline, versioned
+configuration, Registry-backed persistent state, diagnostics, Windows
+packaging, and CI.
 
-No datasource or provisioner is implemented in the foundation. Do not claim
-that a VM was provisioned merely because the service started or a lifecycle
-checkpoint was saved.
+The current provisioning scope is one built-in NoCloud datasource and one
+built-in Windows hostname provisioner. Both are independently opt-in and
+disabled by default. Do not claim that a VM was provisioned merely because the
+service started, metadata was found, or a reboot checkpoint was saved.
 
 ## Mandatory maintenance rule
 
@@ -28,8 +29,15 @@ conventions must update this file in the same change.
   state, and platform boundaries.
 - Keep Windows-specific code behind Windows build constraints and provide only
   truthful portable behavior on other platforms.
-- Distinguish SCM service state, agent lifecycle state, and future provisioning
-  state in code, logs, status output, and documentation.
+- Distinguish SCM service state, agent lifecycle state, plugin enablement and
+  runtime state, and provisioning state in code, logs, status output, and
+  documentation.
+- Overall provisioning stays `running` until enabled provisioners return;
+  never persist a completed aggregate before the platform operation finishes.
+- Constructors for every known built-in may populate the catalog but must
+  perform no I/O. Invoke `Discover` or `Apply` only when that plugin is enabled
+  by current configuration. Configuration disablement always wins over old
+  persistent checkpoints.
 - Do not expose a public plugin protocol until its lifecycle and threat model
   are stable.
 
@@ -41,10 +49,13 @@ internal/app/             composition and command execution
 internal/config/          versioned configuration and validation
 internal/diagnostics/     sanitized diagnostic archive creation
 internal/lifecycle/       lifecycle engine and valid transitions
+internal/plugin/          internal datasource/provisioner contracts and catalog
+internal/platform/        Windows operations behind narrow internal adapters
 internal/service/         SCM/console hosting and administration
 internal/state/           state model and storage implementations
 internal/version/         embedded build information
-internal/windows/         other Windows platform adapters, when needed
+plugins/datasource/       built-in datasource implementations
+plugins/provisioner/      built-in provisioner implementations
 packaging/wix/            WiX MSI source and pinned tooling
 scripts/                  build and packaging helpers
 tests/                    integration, fixtures, and future E2E tests
@@ -90,6 +101,11 @@ Windows behavior.
 - Reject unknown fields unless a documented compatibility decision changes
   this rule.
 - Defaults must be safe and must not enable unimplemented capabilities.
+- The version 1 schema remains backward compatible. Missing built-in plugin
+  fields mean disabled; never infer enablement from old state or installed
+  files.
+- NoCloud and hostname enablement are independent. A single global plugin flag
+  is not an acceptable substitute.
 - Installer upgrades must not overwrite administrator-owned configuration.
 - Never log, persist, or archive passwords, tokens, private keys, or raw
   user-data. Add redaction tests when a new sensitive field is introduced.
@@ -98,11 +114,18 @@ Windows behavior.
 
 - Production lifecycle state is stored in the Windows Registry, never SQLite
   or another database.
-- The state schema is versioned. Reject unknown future schemas rather than
-  guessing their meaning.
+- The state schema is versioned. State schema version 2 is current and must
+  migrate a valid version 1 checkpoint without inventing plugin success. Reject
+  unknown future schemas rather than guessing their meaning.
 - A save must write and validate a complete versioned checkpoint before
-  changing the active checkpoint marker. A load may recover only from a
-  complete, validated prior checkpoint.
+  changing the active checkpoint marker. On Windows, flush the committed marker
+  with `RegFlushKey` before returning so the checkpoint preceding a platform
+  mutation is on disk. A load may recover only from a complete, validated prior
+  checkpoint.
+- `RegFlushKey` is expensive and system-wide at the hive level. Keep state saves
+  at low-frequency lifecycle/plugin boundaries; never add a polling save loop.
+- Store only the normalized plugin input SHA-256, not a raw hostname or metadata
+  target, in plugin checkpoints.
 - State-store implementations own the monotonically increasing checkpoint
   generation; callers must not choose or decrement it.
 - Preserve enough error metadata for diagnosis without storing untrusted or
@@ -126,8 +149,32 @@ Windows behavior.
 
 ## Plugin design constraints
 
-Datasource, provisioner, and external executable plugin layers are planned,
-not part of the foundation's stable API. A future external protocol must have:
+- `Datasource` and `Provisioner` are small internal interfaces. Do not expose
+  them as a stable public Go API.
+- Built-in implementations remain separate under
+  `plugins/datasource/nocloud` and `plugins/provisioner/hostname`.
+- The pipeline executes enabled plugins only. Disabled plugins do not discover,
+  parse, mutate, resume, or reconcile work.
+- Built-in constructors perform no I/O; all discovery and platform access stays
+  behind the execution-time enablement gate.
+- On each process start, rediscover metadata and reconcile every enabled
+  provisioner once. Retry failures only on a later process start; do not add an
+  automatic retry or busy loop.
+- The built-in NoCloud datasource accepts only required `instance-id` and
+  optional `local-hostname`. It must never open or execute `user-data`.
+- Use either an explicit seed directory or one unambiguous, already-mounted
+  `CIDATA` ISO9660/FAT volume. Fail instead of choosing between candidates.
+- The hostname provisioner accepts only the documented conservative 1–15
+  character ASCII label, rejects all-numeric names, refuses domain-joined
+  rename, and compares the active computer name idempotently.
+- `reboot.policy` remains `never`. Persist `reboot_required`, let an
+  administrator restart Windows, then rediscover fresh metadata and reconcile
+  only on a later enabled run. The seed must remain accessible across restart.
+- A changed metadata input is new work. A missing seed after restart reports
+  `no_datasource`; never replay a raw target from state.
+
+External executable plugins remain planned, not part of the current API. A
+future external protocol must have:
 
 - an explicit, versioned handshake and protobuf/gRPC contract;
 - plugin identity and checksum verification;
@@ -137,18 +184,30 @@ not part of the foundation's stable API. A future external protocol must have:
 - compatibility and deprecation policy.
 
 Never execute an arbitrary plugin with inherited LocalSystem privileges by
-default.
+default. `plugins.directory` is reserved and does not authorize execution.
 
 ## Security constraints
 
 - Treat metadata, user-data, configuration, plugin output, filenames, archive
   entries, and Registry contents as untrusted.
+- Never open, parse, archive, or execute NoCloud `user-data` in the current
+  milestone.
+- Refuse ambiguous `CIDATA` discovery and domain-joined hostname mutation.
 - Apply least privilege and restrictive ACLs where Windows permits it.
 - Do not disable certificate or integrity checks to make a test pass.
 - Diagnostics must use an allowlist and sanitized configuration, not an
   indiscriminate copy of data directories.
 - Do not commit credentials, tokens, private keys, Windows media, or license
   keys.
+
+## Concurrency rules
+
+- Service and foreground lifecycle runs must acquire the machine-wide named
+  lock `Global\WininitProvisioning` before loading or mutating lifecycle state.
+- The lock applies regardless of the configured Registry state path. Do not
+  weaken it to a per-key or per-configuration lock.
+- A second process must fail clearly rather than run concurrently or wait in a
+  hidden retry loop.
 
 ## Packaging rules
 

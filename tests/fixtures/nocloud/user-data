@@ -1,0 +1,4 @@
+#cloud-config
+# Fixture only: wininit must never execute or archive this file.
+runcmd:
+  - ['powershell.exe', '-Command', 'throw "user-data must not execute"']

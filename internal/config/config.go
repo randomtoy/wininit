@@ -34,7 +34,27 @@ type StateConfig struct {
 }
 
 type PluginConfig struct {
-	Directory string `yaml:"directory" json:"directory"`
+	Directory    string            `yaml:"directory" json:"directory"`
+	Datasources  DatasourceConfig  `yaml:"datasources" json:"datasources"`
+	Provisioners ProvisionerConfig `yaml:"provisioners" json:"provisioners"`
+}
+
+type DatasourceConfig struct {
+	NoCloud NoCloudConfig `yaml:"nocloud" json:"nocloud"`
+}
+
+type NoCloudConfig struct {
+	Enabled         bool   `yaml:"enabled" json:"enabled"`
+	SeedDirectory   string `yaml:"seed_directory" json:"seed_directory"`
+	DiscoverVolumes bool   `yaml:"discover_volumes" json:"discover_volumes"`
+}
+
+type ProvisionerConfig struct {
+	Hostname ToggleConfig `yaml:"hostname" json:"hostname"`
+}
+
+type ToggleConfig struct {
+	Enabled bool `yaml:"enabled" json:"enabled"`
 }
 
 type RebootConfig struct {
@@ -56,7 +76,7 @@ func Default() Config {
 		Version: CurrentVersion,
 		Log:     LogConfig{Level: "info", Directory: filepath.Join(programData, "wininit", "logs")},
 		State:   StateConfig{RegistryPath: `SOFTWARE\Wininit`},
-		Plugins: PluginConfig{Directory: filepath.Join(programData, "wininit", "plugins")},
+		Plugins: PluginConfig{Directory: filepath.Join(programData, "wininit", "plugins"), Datasources: DatasourceConfig{NoCloud: NoCloudConfig{DiscoverVolumes: true}}},
 		Reboot:  RebootConfig{Policy: "never"},
 	}
 }
@@ -139,6 +159,18 @@ func (c Config) Validate() error {
 	}
 	if strings.TrimSpace(c.Plugins.Directory) == "" {
 		errs = append(errs, errors.New("plugins.directory must not be empty"))
+	}
+	noCloud := c.Plugins.Datasources.NoCloud
+	if noCloud.Enabled {
+		if noCloud.SeedDirectory == "" && !noCloud.DiscoverVolumes {
+			errs = append(errs, errors.New("enabled nocloud requires seed_directory or discover_volumes"))
+		}
+		if noCloud.SeedDirectory != "" && !filepath.IsAbs(noCloud.SeedDirectory) {
+			errs = append(errs, errors.New("plugins.datasources.nocloud.seed_directory must be an absolute local path"))
+		}
+		if strings.HasPrefix(noCloud.SeedDirectory, `\\`) || strings.HasPrefix(noCloud.SeedDirectory, "//") || strings.Contains(noCloud.SeedDirectory, "://") {
+			errs = append(errs, errors.New("nocloud network paths and URLs are not supported"))
+		}
 	}
 	if c.Reboot.Policy != "never" {
 		errs = append(errs, errors.New(`reboot.policy must be "never" until reboot orchestration is implemented`))

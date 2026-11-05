@@ -67,6 +67,27 @@ function Wait-ServiceAbsent {
     throw "Service '$Name' still exists after uninstall."
 }
 
+function Get-HostNameState {
+    $activePath = 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ActiveComputerName'
+    $pendingPath = 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName'
+    return [PSCustomObject]@{
+        Active  = (Get-ItemPropertyValue -LiteralPath $activePath -Name 'ComputerName' -ErrorAction Stop)
+        Pending = (Get-ItemPropertyValue -LiteralPath $pendingPath -Name 'ComputerName' -ErrorAction Stop)
+    }
+}
+
+function Assert-HostNameUnchanged {
+    param(
+        [Parameter(Mandatory)]$Expected,
+        [Parameter(Mandatory)][string]$Phase
+    )
+
+    $actual = Get-HostNameState
+    if ($actual.Active -ne $Expected.Active -or $actual.Pending -ne $Expected.Pending) {
+        throw "Host name changed during $Phase (active '$($Expected.Active)' -> '$($actual.Active)', pending '$($Expected.Pending)' -> '$($actual.Pending)')."
+    }
+}
+
 $expectedUpgradeCode = '{B6E7B4A3-7C3B-4850-AE0B-3F8D1B8E72D9}'
 $actualUpgradeCode = Get-MsiProperty -Path $MsiPath -Name 'UpgradeCode'
 if ($actualUpgradeCode -ne $expectedUpgradeCode) {
@@ -81,6 +102,7 @@ $existingService = Get-Service -Name 'wininit' -ErrorAction SilentlyContinue
 if ($null -ne $existingService) {
     throw 'A wininit service already exists. Refusing to alter a pre-existing installation.'
 }
+$originalHostName = Get-HostNameState
 
 $installed = $false
 $service = $null
@@ -123,6 +145,37 @@ try {
         throw "Version output '$versionOutput' does not contain '$ExpectedExecutableVersion'."
     }
 
+    $statusOutput = (& $executable status --json 2>&1 | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0) { throw "wininit status --json failed: $statusOutput" }
+    try {
+        $status = $statusOutput | ConvertFrom-Json -ErrorAction Stop
+    }
+    catch {
+        throw "wininit status did not return valid JSON: $statusOutput"
+    }
+    if ($status.service -ne 'running') {
+        throw "Status reported service '$($status.service)', expected 'running'."
+    }
+    if ($status.provisioning -ne 'disabled') {
+        throw "Status reported provisioning '$($status.provisioning)', expected 'disabled'."
+    }
+    $plugins = @($status.plugins)
+    if ($plugins.Count -ne 2) {
+        throw "Status reported $($plugins.Count) plugins, expected the disabled NoCloud datasource and hostname provisioner."
+    }
+    $noCloud = @($plugins | Where-Object { $_.name -eq 'nocloud' -and $_.kind -eq 'datasource' })
+    $hostname = @($plugins | Where-Object { $_.name -eq 'hostname' -and $_.kind -eq 'provisioner' })
+    if ($noCloud.Count -ne 1 -or $noCloud[0].enabled -ne $false) {
+        throw 'NoCloud datasource was not reported exactly once as disabled.'
+    }
+    if ($hostname.Count -ne 1 -or $hostname[0].enabled -ne $false) {
+        throw 'Hostname provisioner was not reported exactly once as disabled.'
+    }
+    if (@($plugins | Where-Object { $_.enabled }).Count -ne 0) {
+        throw 'The installer default configuration unexpectedly enabled a plugin.'
+    }
+    Assert-HostNameUnchanged -Expected $originalHostName -Phase 'install and service startup'
+
     Invoke-MsiExec -Arguments @('/x', $MsiPath, '/qn', '/norestart', '/l*v', $uninstallLog)
     $installed = $false
     Wait-ServiceAbsent -Name 'wininit'
@@ -139,6 +192,7 @@ try {
     if ($preservedValue -ne $sentinelValue) {
         throw 'A lifecycle-state sentinel was not preserved by uninstall.'
     }
+    Assert-HostNameUnchanged -Expected $originalHostName -Phase 'uninstall'
 
     Write-Host "MSI smoke test passed for ProductVersion $actualVersion."
 }

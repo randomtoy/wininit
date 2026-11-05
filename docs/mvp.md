@@ -1,11 +1,10 @@
-# Foundation MVP
+# Foundation and first provisioning milestone
 
 ## Objective
 
-The foundation MVP provides a production-shaped host for later VM
-initialization work. It proves service lifecycle, configuration, persistence,
-diagnostics, packaging, and delivery without pretending that provisioning has
-already happened.
+The foundation provides the production-shaped host. The next milestone adds a
+narrow, independently opt-in NoCloud-to-hostname pipeline without expanding
+into general cloud-init behavior.
 
 ## Included
 
@@ -21,18 +20,27 @@ already happened.
 - [x] WiX-based MSI definition with native service management
 - [x] CI and tag-based release workflows
 - [x] Architecture, operations, security, and contribution documentation
+- [x] Internal built-in `Datasource` and `Provisioner` boundaries
+- [x] Independently disabled-by-default NoCloud and hostname configuration
+- [x] NoCloud `instance-id` and optional `local-hostname` parsing
+- [x] Explicit seed folder and unambiguous mounted `CIDATA` discovery
+- [x] Conservative, domain-aware, idempotent hostname provisioner
+- [x] State schema version 1 to version 2 migration
+- [x] Durable `reboot_required` checkpoint with no automatic restart
+- [x] Per-plugin enabled/disabled/runtime status
 
-Items are part of the MVP contract. A repository revision is release-ready only
-when the corresponding tests and workflows pass; source presence alone is not
-verification.
+Items are part of the milestone contract. A repository revision is
+release-ready only when the corresponding tests and workflows pass; source
+presence alone is not verification. Real-VM validation remains explicitly
+pending.
 
 ## Explicitly excluded
 
-- metadata media discovery or parsing;
-- NoCloud and OpenStack ConfigDrive datasource implementations;
-- hostname, user, password, or SSH key changes;
+- OpenStack ConfigDrive and network metadata sources;
+- metadata keys beyond required `instance-id` and optional `local-hostname`;
+- users, passwords, or SSH keys;
 - PowerShell user-data execution;
-- provisioner idempotency and reboot orchestration;
+- automatic restart orchestration;
 - external executable plugin execution;
 - a public protobuf/gRPC plugin API or Go SDK;
 - real Windows Server 2022/2025 VM end-to-end verification; and
@@ -42,7 +50,8 @@ The excluded work is tracked in the [roadmap](roadmap.md).
 
 ## Release acceptance
 
-A foundation release requires passing Go validation, Windows cross-build, native
-Windows state tests, MSI construction/validation, and the documented elevated
-smoke tests when the runner permits them. Any skipped native check must be
+A release requires passing Go validation, Windows cross-build, configuration
+gating and state migration tests, NoCloud/hostname tests, native Windows state
+tests, MSI construction/validation, and the documented elevated smoke tests
+when the runner permits them. Any skipped native or real-VM check must be
 visible in release notes and must not be described as successful.

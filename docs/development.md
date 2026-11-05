@@ -12,6 +12,20 @@
 Go and documentation work can be done on Windows, Linux, or macOS. A successful
 Windows cross-build does not replace native Windows testing.
 
+The built-in NoCloud and hostname packages are independently testable behind
+small internal interfaces. Tests must cover default-disabled and explicitly
+disabled behavior, including a state checkpoint from an older enabled run.
+Configuration tests must prove that older version 1 files keep both plugins
+disabled. State tests must cover deterministic schema version 1 to version 2
+migration.
+
+Lifecycle tests must also verify one reconciliation per process start, no
+automatic retry loop, configuration-hash gating of saved status, fresh metadata
+after restart, and disablement precedence over pending work. State-store tests
+cover active-marker recovery and durable Registry save behavior. The current
+lock test acquires the named lock through two handles in one process; a true
+multi-process exclusion test is still pending.
+
 ## Common commands
 
 ```bash
@@ -63,6 +77,12 @@ changing the Registry, SCM, or MSI state. The test suite must emit a clear,
 policy-consistent skip when elevation is optional and fail when an explicitly
 required release smoke test lacks elevation.
 
+Volume-discovery tests use controlled fakes plus a native read-only test which
+enumerates supported local volume labels and filesystem types without opening
+volume contents or mutating them. Windows hostname tests must not rename a
+shared CI host. Tests of the actual rename/restart path belong in disposable,
+licensed Windows Server guests.
+
 ## MSI smoke testing
 
 From an elevated Windows test environment:
@@ -101,6 +121,9 @@ workflow's uploaded failure diagnostics.
 ## Future VM tests
 
 Packer/QEMU or equivalent automation will create ephemeral Windows Server
-2022/2025 test guests from administrator-supplied media. The repository must
-never contain or download copyrighted Windows installation media or license
-keys.
+2022/2025 test guests from administrator-supplied media. It must validate
+mounted CIDATA discovery, hostname mutation, no automatic restart, an
+administrator-initiated restart, and active-name reconciliation. This real-VM
+validation is pending; the repository does not claim that a VM restart has been
+performed or tested. The repository must never contain or download
+copyrighted Windows installation media or license keys.

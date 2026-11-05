@@ -56,3 +56,28 @@ func TestRegistryStoreRoundTripAndRecovery(t *testing.T) {
 		t.Fatalf("recovered Load() = %#v, %v", recovered, err)
 	}
 }
+
+func TestRegistryFutureSchemaDoesNotFallBackAndReplay(t *testing.T) {
+	path := fmt.Sprintf(`SOFTWARE\WininitTests\%d`, time.Now().UnixNano())
+	store := newRegistryStore(registry.CURRENT_USER, path)
+	t.Cleanup(func() { _ = registry.DeleteKey(registry.CURRENT_USER, path) })
+	value := Initial(time.Now())
+	if err := store.Save(context.Background(), value); err != nil {
+		t.Fatal(err)
+	}
+	key, err := registry.OpenKey(registry.CURRENT_USER, path, registry.ALL_ACCESS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer key.Close()
+	value.SchemaVersion++
+	if err := key.SetBinaryValue(slotBValue, rawCheckpoint(t, value)); err != nil {
+		t.Fatal(err)
+	}
+	if err := key.SetStringValue(activeValue, slotBValue); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Load(context.Background()); !errors.Is(err, ErrUnsupportedSchema) {
+		t.Fatalf("Load error=%v", err)
+	}
+}

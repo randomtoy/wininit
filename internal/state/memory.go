@@ -45,6 +45,13 @@ func (m *MemoryStore) Save(ctx context.Context, value State) error {
 }
 
 func clone(value State) State {
+	if value.Plugins != nil {
+		plugins := make(map[string]PluginState, len(value.Plugins))
+		for name, checkpoint := range value.Plugins {
+			plugins[name] = checkpoint
+		}
+		value.Plugins = plugins
+	}
 	if value.Attempts != nil {
 		attempts := make(map[string]int, len(value.Attempts))
 		for k, v := range value.Attempts {

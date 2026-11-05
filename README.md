@@ -7,10 +7,11 @@ Go. It is intended for Windows Server guests running on QEMU/KVM and OpenStack
 and is being designed for NoCloud and OpenStack ConfigDrive metadata.
 
 > [!IMPORTANT]
-> The project is in its foundation phase. The agent can host a Windows Service,
-> validate configuration, maintain lifecycle state, and collect diagnostics. It
-> does **not** yet discover VM metadata or make provisioning changes. A running
-> service must not be interpreted as a successfully provisioned instance.
+> The project is in an early provisioning milestone. It includes an opt-in,
+> built-in NoCloud datasource and an independently opt-in Windows hostname
+> provisioner. Both are disabled by default. User-data is never opened or
+> executed. A running service must not be interpreted as a successfully
+> provisioned instance.
 
 `wininit` is an independent design, not a line-by-line port or derivative
 implementation of Cloudbase-Init.
@@ -25,10 +26,12 @@ implementation of Cloudbase-Init.
 | Persistent lifecycle state in the Windows Registry | Foundation |
 | Status reporting and sanitized diagnostics | Foundation |
 | Windows AMD64 EXE and MSI packaging | Foundation |
-| NoCloud and OpenStack ConfigDrive datasources | Planned |
-| Hostname, user, password, and SSH key provisioning | Planned |
+| NoCloud seed directory and mounted CIDATA volume datasource | Implemented; opt-in |
+| Conservative Windows hostname provisioning | Implemented; opt-in |
+| OpenStack ConfigDrive datasource | Planned |
+| User, password, and SSH key provisioning | Planned |
 | PowerShell user-data | Planned |
-| Reboot/resume provisioning | Planned |
+| Hostname restart checkpoint/reconciliation | Implemented; no automatic restart |
 | External executable plugins and public Go SDK | Planned |
 
 See [MVP scope](docs/mvp.md), [compatibility](docs/compatibility.md), and the
@@ -40,12 +43,24 @@ planned work.
 The executable runs in one of three modes: a Windows Service managed by the
 Service Control Manager (SCM), a foreground process for development, or a
 short-lived CLI command. Application startup loads validated configuration,
-opens a state store, and starts a cancellation-aware lifecycle engine. On
-Windows, production state is kept under a versioned Registry checkpoint; tests
+opens a state store, and starts a cancellation-aware lifecycle pipeline. On
+Windows, production state is kept under versioned Registry checkpoints; tests
 use an in-memory store.
 
-The datasource manager, provisioner manager, and external plugin protocol are
-future components. No unstable plugin API is exposed by the foundation.
+Small internal datasource and provisioner interfaces separate the pipeline
+from built-in implementations. The NoCloud datasource and hostname provisioner
+are compiled into the executable, independently configured, and never enabled
+implicitly. The external process/gRPC protocol remains deferred; no public
+plugin API is exposed by this milestone.
+
+On each process start, the pipeline invokes the enabled datasource and
+reconciles each enabled provisioner once. Built-in constructors perform no I/O;
+all discovery and mutation remain behind the enablement gate. The engine does
+not poll or retry in a busy loop; a failure is attempted again only after a
+later service/process start. A machine-wide
+`Global\WininitProvisioning` lifecycle lock prevents service and foreground
+instances from mutating the host concurrently, even if they use different
+Registry state paths.
 
 See [Architecture](docs/architecture.md) and the
 [architecture decision records](docs/adr/README.md).
@@ -123,8 +138,12 @@ wininit service stop
 
 Run `wininit help` or `wininit <command> --help` for command-specific options.
 Commands return a non-zero exit status when validation or administration fails.
-`status` distinguishes SCM service state from lifecycle/provisioning state and
-does not report provisioning success while no provisioners exist.
+`status` distinguishes SCM service state, lifecycle state, and each plugin's
+enabled, runtime, or disabled state. Each plugin descriptor includes `name`,
+`kind`, `enabled`, and `status`. Disabled plugins are not reported as
+successfully executed, and a pending hostname restart is not reported as
+completed provisioning. Saved runtime results are used only when they match the
+current plugin configuration hash.
 
 `collect-logs` creates an archive containing available logs, status, build
 information, and a sanitized configuration snapshot. Passwords, tokens,
@@ -133,11 +152,14 @@ private keys, and raw user-data must never appear in a diagnostic archive.
 ## Configuration
 
 Configuration has an explicit schema version and is rejected when unsupported
-or invalid. Safe defaults cover logging, Registry state location, future plugin
-directory, and reboot policy. Features which do not yet exist do not require
-configuration.
+or invalid. Schema version 1 remains backward compatible: configurations which
+omit the new built-in plugin sections keep both plugins disabled. NoCloud and
+hostname have separate `enabled` flags, and current configuration disablement
+always takes priority over old pending checkpoints. `reboot.policy` remains
+`never`; the agent never restarts Windows automatically.
 
-See [Configuration](docs/configuration.md) for the schema and default paths.
+See [Configuration](docs/configuration.md) for the schema and default paths, and
+[Built-in plugins](docs/plugins.md) for exact opt-in and disable examples.
 
 ## Build
 
@@ -171,23 +193,27 @@ For commands without Make, local testing, and Windows integration setup, see
 
 The repository uses:
 
-- platform-independent unit tests for configuration, lifecycle, state
-  serialization, recovery, and version information;
+- platform-independent unit tests for configuration, lifecycle, plugin
+  selection, metadata parsing, hostname validation, state migration/recovery,
+  and version information;
 - Windows tests using dedicated, isolated Registry keys;
 - native Windows service and MSI smoke tests where elevation is available; and
 - cross-compilation checks for the Windows AMD64 executable.
 
 Tests must clean up resources they create. They must never use the production
 Registry path unless an explicitly isolated integration scenario requires it.
-Real QEMU/KVM Windows Server 2022 and 2025 end-to-end testing is planned.
+Real QEMU/KVM Windows Server 2022 and 2025 NoCloud, rename, restart, and resume
+end-to-end validation is still pending.
 
 ## Security
 
-The service may require LocalSystem privileges for future provisioning work.
-Metadata, user-data, configuration, and external plugins must all be treated as
-untrusted. External plugin execution is intentionally absent until identity,
-checksum, protocol negotiation, least-privilege execution, deadlines,
-cancellation, and secret-redaction controls are designed and reviewed.
+The service may require LocalSystem privileges for provisioning work. NoCloud
+media, metadata, configuration, and future external plugins must all be treated
+as untrusted. The current datasource consumes only required `instance-id` and
+optional `local-hostname`; it never opens or executes `user-data`. External
+plugin execution is intentionally absent until identity, checksum, protocol
+negotiation, least-privilege execution, deadlines, cancellation, and
+secret-redaction controls are designed and reviewed.
 
 Read [SECURITY.md](SECURITY.md) and [Security model](docs/security.md) before
 working on state, diagnostics, metadata, user-data, or plugins.

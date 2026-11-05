@@ -14,10 +14,17 @@ multi-row database transaction.
 
 Use HKLM Registry state behind a small internal `StateStore` interface. Store a
 versioned serialized checkpoint in an inactive slot, validate it, then replace
-the active-slot marker. Retain a prior valid slot for recovery and let the
-store assign each monotonically increasing checkpoint generation. Reject
-unknown schemas and invalid state. Use an in-memory implementation for unit
-tests.
+the active-slot marker. On Windows, call `RegFlushKey` after activating the
+checkpoint and before returning from `Save`, so a platform mutation never begins
+against a checkpoint which exists only in the Registry cache. Retain a prior
+valid slot for recovery and let the store assign each monotonically increasing
+checkpoint generation. Reject unknown schemas and invalid state. Use an
+in-memory implementation for unit tests.
+
+State schema version 2 adds non-sensitive built-in plugin status, configuration
+identity, and restart-required checkpoints. A valid schema version 1 checkpoint
+is migrated to version 2 with provisioning disabled; migration never invents a
+completed plugin result.
 
 Never store passwords, tokens, private keys, or raw metadata/user-data, and
 never expose Registry access directly to external plugins.
@@ -26,8 +33,10 @@ never expose Registry access directly to external plugins.
 
 The installation remains dependency-light and administrators can inspect state
 with standard Windows tools. The implementation must test partial writes,
-invalid active markers, schema incompatibility, and recovery. Operational state
-is deliberately preserved during ordinary upgrade and uninstall.
+invalid active markers, schema incompatibility, flush failure, and recovery.
+`RegFlushKey` consumes system-wide hive resources, so state saves remain
+low-frequency lifecycle boundaries rather than a periodic loop. Operational
+state is deliberately preserved during ordinary upgrade and uninstall.
 
 ## Alternatives considered
 
@@ -41,3 +50,4 @@ is deliberately preserved during ordinary upgrade and uninstall.
 
 - [Go Registry package](https://pkg.go.dev/golang.org/x/sys/windows/registry)
 - [Registry value limits](https://learn.microsoft.com/windows/win32/sysinfo/registry-element-size-limits)
+- [Microsoft `RegFlushKey`](https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regflushkey)

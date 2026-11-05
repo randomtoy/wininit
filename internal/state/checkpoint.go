@@ -41,6 +41,14 @@ func decodeCheckpoint(data []byte) (State, error) {
 	if err := json.Unmarshal(env.Payload, &value); err != nil {
 		return State{}, fmt.Errorf("%w: decode state: %v", ErrCorrupt, err)
 	}
+	// Version 1 had no plugin execution state. Migration preserves all existing
+	// lifecycle evidence and never invents a completed provisioning operation.
+	if value.SchemaVersion == 1 {
+		value.SchemaVersion = CurrentSchemaVersion
+		value.Provisioning = "disabled"
+		value.ConfigurationHash = ""
+		value.Plugins = nil
+	}
 	if err := value.Validate(); err != nil {
 		return State{}, err
 	}

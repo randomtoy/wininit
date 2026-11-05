@@ -12,17 +12,25 @@ verified and no provisioning capability is claimed.
 
 ## 2. NoCloud and first provisioner
 
-Discover NoCloud media, parse and validate metadata, define the initial
-internal datasource contract, and implement an idempotent hostname provisioner.
+Implement independently opt-in built-in NoCloud and hostname plugins. Support
+an explicit seed directory or unambiguous mounted `CIDATA` ISO9660/FAT volume,
+required `instance-id`, optional `local-hostname`, conservative domain-aware
+rename, and a durable administrator-managed restart checkpoint. Do not open or
+execute user-data.
 
-Exit criteria: repeated execution produces no unnecessary change; required
-reboot/checkpoint/resume behavior survives process and VM restart; tests pass
-against a real Windows guest.
+Implementation status: code and automated component/native integration tests
+are in this milestone. Both plugins remain disabled by default and external
+plugins remain deferred.
+
+Remaining exit criterion: repeated execution and reboot/checkpoint/resume must
+be validated against real Windows Server 2022 and 2025 guests. Until that is
+complete, the compatibility matrix keeps real-VM support pending.
 
 ## 3. OpenStack ConfigDrive compatibility
 
-Add supported ConfigDrive layouts and OpenStack metadata normalization without
-leaking datasource-specific details into provisioners.
+Add supported OpenStack ConfigDrive layouts and metadata normalization without
+leaking datasource-specific details into provisioners. Preserve independent
+datasource enablement and fail on ambiguous selection.
 
 Exit criteria: documented fixtures and real OpenStack/QEMU tests cover media
 selection, malformed input, and datasource precedence.
