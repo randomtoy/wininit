@@ -90,12 +90,51 @@ type countingDatasource struct {
 	calls    int
 	metadata plugin.Metadata
 	err      error
+	before   func()
 }
 
 func (*countingDatasource) Name() string { return "nocloud" }
 func (d *countingDatasource) Discover(context.Context) (plugin.Metadata, error) {
 	d.calls++
+	if d.before != nil {
+		d.before()
+	}
 	return d.metadata, d.err
+}
+
+func TestDiscoveryIsPendingUntilSourceAbsenceIsKnown(t *testing.T) {
+	t.Parallel()
+	engine, store, datasource, _ := pipeline(t, true, true)
+	datasource.err = plugin.ErrUnavailable
+	datasource.before = func() {
+		current, err := store.Load(context.Background())
+		if err != nil || current.Provisioning != "pending" {
+			t.Fatalf("discovery reported absence prematurely: %#v %v", current, err)
+		}
+	}
+	current := state.Initial(time.Now())
+	if err := engine.reconcile(context.Background(), &current); err != nil {
+		t.Fatal(err)
+	}
+	if current.Provisioning != "no_datasource" {
+		t.Fatalf("state=%#v", current)
+	}
+}
+
+func TestConcurrentStopDoesNotErasePluginFailure(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	engine, store, _, provisioner := pipeline(t, true, true)
+	want := errors.New("actual platform error")
+	provisioner.before, provisioner.err = cancel, want
+	if err := engine.Run(ctx); !errors.Is(err, want) {
+		t.Fatalf("Run() error=%v", err)
+	}
+	current, err := store.Load(context.Background())
+	if err != nil || current.Provisioning != "failed" || current.LastError == nil || current.Phase != state.PhaseFoundationError {
+		t.Fatalf("failure overwritten: %#v %v", current, err)
+	}
 }
 
 type countingProvisioner struct {

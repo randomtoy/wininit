@@ -47,7 +47,7 @@ func (e *Engine) reconcile(ctx context.Context, current *state.State) error {
 			current.Plugins[name] = state.PluginState{Status: "disabled"}
 			continue
 		}
-		current.Provisioning = "no_datasource"
+		current.Provisioning = "pending"
 		current.Plugins[name] = state.PluginState{Status: "running"}
 		current.Attempts[name]++
 		if err := e.save(ctx, current); err != nil {
@@ -66,6 +66,12 @@ func (e *Engine) reconcile(ctx context.Context, current *state.State) error {
 		break
 	}
 	if !found {
+		for _, registration := range e.catalog.Datasources {
+			if registration.Enabled {
+				current.Provisioning = "no_datasource"
+				break
+			}
+		}
 		return e.save(ctx, current)
 	}
 	if current.InstanceID != metadata.InstanceID {
@@ -134,8 +140,8 @@ func (e *Engine) reconcile(ctx context.Context, current *state.State) error {
 }
 
 func (e *Engine) pluginFailure(ctx context.Context, current *state.State, name string, cause error) error {
-	if ctx.Err() != nil {
-		return ctx.Err()
+	if ctx.Err() != nil && (errors.Is(cause, context.Canceled) || errors.Is(cause, context.DeadlineExceeded)) {
+		return cause
 	}
 	checkpoint := current.Plugins[name]
 	checkpoint.Status = "failed"

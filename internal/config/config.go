@@ -157,6 +157,9 @@ func (c Config) Validate() error {
 	} else if !strings.HasPrefix(strings.ToUpper(path), `SOFTWARE\`) {
 		errs = append(errs, errors.New(`state.registry_path must be below SOFTWARE\`))
 	}
+	if len(path) <= len(`SOFTWARE\`) || strings.HasSuffix(path, `\`) || strings.Contains(path, `\\`) || strings.ContainsAny(path, "/\x00") || path != c.State.RegistryPath {
+		errs = append(errs, errors.New("state.registry_path must name a nonempty subkey with no empty path components, NUL, or surrounding whitespace"))
+	}
 	if strings.TrimSpace(c.Plugins.Directory) == "" {
 		errs = append(errs, errors.New("plugins.directory must not be empty"))
 	}

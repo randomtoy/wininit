@@ -106,6 +106,7 @@ $originalHostName = Get-HostNameState
 
 $installed = $false
 $service = $null
+$contendedProcess = $null
 $stateKey = 'HKLM:\SOFTWARE\Wininit'
 $installationKey = Join-Path $stateKey 'Installation'
 $sentinelName = 'MsiSmokePreserve'
@@ -145,13 +146,30 @@ try {
         throw "Version output '$versionOutput' does not contain '$ExpectedExecutableVersion'."
     }
 
-    $statusOutput = (& $executable status --json 2>&1 | Out-String).Trim()
-    if ($LASTEXITCODE -ne 0) { throw "wininit status --json failed: $statusOutput" }
-    try {
-        $status = $statusOutput | ConvertFrom-Json -ErrorAction Stop
-    }
-    catch {
-        throw "wininit status did not return valid JSON: $statusOutput"
+    $status = $null
+    $statusOutput = ''
+    $lifecycleReady = $false
+    $statusDeadline = [DateTime]::UtcNow.AddSeconds(10)
+    do {
+        $statusOutput = (& $executable status --json 2>&1 | Out-String).Trim()
+        if ($LASTEXITCODE -ne 0) { throw "wininit status --json failed: $statusOutput" }
+        try {
+            $status = $statusOutput | ConvertFrom-Json -ErrorAction Stop
+        }
+        catch {
+            throw "wininit status did not return valid JSON: $statusOutput"
+        }
+        $lifecycleProperty = $status.PSObject.Properties['lifecycle']
+        if ($null -ne $lifecycleProperty -and
+            $null -ne $lifecycleProperty.Value -and
+            $lifecycleProperty.Value.phase -eq 'agent_running') {
+            $lifecycleReady = $true
+            break
+        }
+        Start-Sleep -Milliseconds 250
+    } while ([DateTime]::UtcNow -lt $statusDeadline)
+    if (-not $lifecycleReady) {
+        throw "wininit service did not report lifecycle phase 'agent_running' within 10 seconds; last status: $statusOutput"
     }
     if ($status.service -ne 'running') {
         throw "Status reported service '$($status.service)', expected 'running'."
@@ -176,6 +194,33 @@ try {
     }
     Assert-HostNameUnchanged -Expected $originalHostName -Phase 'install and service startup'
 
+    $contendedStdout = Join-Path $ArtifactsDirectory 'contended-run.stdout.log'
+    $contendedStderr = Join-Path $ArtifactsDirectory 'contended-run.stderr.log'
+    $contendedProcess = Start-Process -FilePath $executable `
+        -ArgumentList @('run') `
+        -RedirectStandardOutput $contendedStdout `
+        -RedirectStandardError $contendedStderr `
+        -NoNewWindow `
+        -PassThru
+    if (-not $contendedProcess.WaitForExit(10000)) {
+        $contendedProcess.Kill()
+        $contendedProcess.WaitForExit()
+        throw 'A contended foreground lifecycle process did not exit within 10 seconds; only that child process was terminated.'
+    }
+    $contendedProcess.WaitForExit()
+    if ($contendedProcess.ExitCode -eq 0) {
+        throw 'A second lifecycle process unexpectedly exited successfully while the LocalSystem service held the machine lock.'
+    }
+    $contendedOutput = @(
+        Get-Content -LiteralPath $contendedStdout -Raw -ErrorAction SilentlyContinue
+        Get-Content -LiteralPath $contendedStderr -Raw -ErrorAction SilentlyContinue
+    ) -join "`n"
+    if ($contendedOutput -notlike '*another wininit lifecycle process*') {
+        throw "Contended run did not report the expected machine-lock error: $contendedOutput"
+    }
+    $contendedProcess.Dispose()
+    $contendedProcess = $null
+
     Invoke-MsiExec -Arguments @('/x', $MsiPath, '/qn', '/norestart', '/l*v', $uninstallLog)
     $installed = $false
     Wait-ServiceAbsent -Name 'wininit'
@@ -197,6 +242,13 @@ try {
     Write-Host "MSI smoke test passed for ProductVersion $actualVersion."
 }
 finally {
+    if ($null -ne $contendedProcess) {
+        if (-not $contendedProcess.HasExited) {
+            $contendedProcess.Kill()
+            $contendedProcess.WaitForExit()
+        }
+        $contendedProcess.Dispose()
+    }
     if ($null -ne $service) {
         $service.Close()
     }

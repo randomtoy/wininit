@@ -59,11 +59,23 @@ current configuration. Datasource and provisioner enablement are independent.
 A disabled plugin is reported as disabled, not as executed or successful, and
 current configuration always overrides an old pending checkpoint.
 
-The service and foreground command acquire the machine-wide named lifecycle
-lock `Global\WininitProvisioning` before running the engine. This prevents two
-processes from mutating the machine concurrently even when their configurations
-select different Registry paths. A competing process fails visibly rather than
-waiting or running a hidden retry loop.
+The service and foreground command acquire `WininitPrivate\Provisioning`, a
+mutex in a protected Windows private namespace, before running the engine. The
+namespace boundary contains the Builtin Administrators SID and deliberately no
+session SID, so the same object coordinates elevated callers across sessions.
+A protected DACL grants namespace and mutex access only to SYSTEM and Builtin
+Administrators. This prevents two processes from mutating the machine
+concurrently even when their configurations select different Registry paths.
+A competing process fails visibly rather than waiting or running a hidden retry
+loop.
+
+Windows mutex ownership belongs to the acquiring thread. A dedicated worker
+goroutine pins itself to an OS thread for wait, ownership, and release. An
+abandoned mutex is accepted as acquired because durable state reconciliation is
+the recovery mechanism. The public release operation is idempotent and may be
+called from another goroutine; it signals the owner thread to release and clean
+up the mutex handle. The protected namespace handle is retained for the process
+lifetime.
 
 The datasource stage runs before provisioners. The built-in NoCloud datasource
 returns a small internal metadata model containing required `instance-id` and
@@ -106,6 +118,10 @@ Loading validates the active checkpoint and may recover from the most recent
 complete prior checkpoint. The store, rather than its callers, assigns a
 monotonically increasing generation to each save. Invalid data results in a
 visible error rather than an invented initial or successful state.
+An unsupported future schema in any checkpoint slot fails closed, even when an
+older understood slot is marked active. Loading does not choose the older
+checkpoint, and saving does not overwrite future state as though it were
+absent.
 
 An in-memory implementation supports deterministic unit tests and is not used
 as silent production fallback.
@@ -121,8 +137,11 @@ contains contracts and catalog types.
 
 NoCloud reads either an explicitly configured seed directory or exactly one
 eligible mounted `CIDATA` ISO9660/FAT volume. More than one candidate is an
-error, not a precedence choice. Only `instance-id` and `local-hostname` are in
-scope. `user-data` is never opened or run.
+error, not a precedence choice. Query failures and unsupported filesystems on
+unrelated local drives are skipped rather than making them candidates. The
+discovery checkpoint remains pending until every enabled datasource candidate
+has returned unavailable. Only `instance-id` and `local-hostname` are in scope.
+`user-data` is never opened or run.
 
 Hostname validation accepts only a conservative 1–15 character ASCII label
 which is not all numeric. The provisioner refuses domain-joined hosts. Windows
@@ -143,6 +162,10 @@ states as appropriate. Stop and system shutdown controls cancel the root
 context. The service waits on cancellation or owned lifecycle work; it does not
 use a busy loop. Startup and shutdown failures are logged and propagated to the
 SCM where the platform API permits.
+
+An error is treated as a clean shutdown cancellation only when its cause is the
+root context cancellation. A plugin, platform, or state failure is not hidden
+merely because cancellation happened concurrently.
 
 ## Logging and diagnostics
 

@@ -43,7 +43,7 @@ The complete serialized schema is:
 | `version` | Yes | Selects the schema; version 1 is the foundation schema. |
 | `log.level` | No | One of `debug`, `info`, `warn`, or `error`; defaults to `info`. |
 | `log.directory` | No | Location for service logs under ProgramData. |
-| `state.registry_path` | No | Path relative to HKLM; it must remain below `SOFTWARE\`. |
+| `state.registry_path` | No | Non-empty HKLM subkey below `SOFTWARE\`, dedicated to wininit state. |
 | `plugins.directory` | No | Reserved future plugin path; setting it does not enable plugins. |
 | `plugins.datasources.nocloud.enabled` | No | Opts into the built-in NoCloud datasource; defaults to `false`. |
 | `plugins.datasources.nocloud.seed_directory` | No | Explicit seed directory; defaults to empty. |
@@ -62,6 +62,12 @@ State:         HKLM\SOFTWARE\Wininit
 
 The executable's help and distributed configuration are authoritative if a
 release changes a path.
+
+`state.registry_path` must identify a dedicated product/test subkey such as
+`SOFTWARE\Wininit`. Validation rejects the `SOFTWARE` root, empty paths, empty
+components, surrounding whitespace, slashes, and NUL. Administrators must not
+select a shared parent because checkpoint creation and recovery must never
+overlap unrelated Registry values.
 
 ## Backward compatibility and enablement
 

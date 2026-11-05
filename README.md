@@ -58,9 +58,9 @@ reconciles each enabled provisioner once. Built-in constructors perform no I/O;
 all discovery and mutation remain behind the enablement gate. The engine does
 not poll or retry in a busy loop; a failure is attempted again only after a
 later service/process start. A machine-wide
-`Global\WininitProvisioning` lifecycle lock prevents service and foreground
-instances from mutating the host concurrently, even if they use different
-Registry state paths.
+`WininitPrivate\Provisioning` mutex in a protected Windows private namespace
+prevents service and foreground instances from mutating the host concurrently,
+even if they run in different sessions or use different Registry state paths.
 
 See [Architecture](docs/architecture.md) and the
 [architecture decision records](docs/adr/README.md).

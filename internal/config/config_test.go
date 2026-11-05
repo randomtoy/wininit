@@ -119,6 +119,17 @@ func TestPluginConfigurationRejectsMisspelledNames(t *testing.T) {
 	}
 }
 
+func TestRegistryPathRequiresDedicatedSubkey(t *testing.T) {
+	t.Parallel()
+	for _, path := range []string{`SOFTWARE\`, `SOFTWARE\Wininit\`, `SOFTWARE\\Wininit`, "SOFTWARE\\Wininit\x00bad", "SOFTWARE\\Wininit/other", " SOFTWARE\\Wininit"} {
+		cfg := Default()
+		cfg.State.RegistryPath = path
+		if err := cfg.Validate(); err == nil {
+			t.Errorf("accepted unsafe Registry path %q", path)
+		}
+	}
+}
+
 func writeConfig(t *testing.T, content string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "wininit.yaml")

@@ -94,6 +94,12 @@ MSI construction, Registry integration, SCM integration, and silent installer
 smoke tests require Windows. Cross-compiling the EXE does not validate native
 Windows behavior.
 
+The manual procedure in `tests/e2e/README.md` is the acceptance contract for a
+disposable, licensed, non-domain-joined Windows Server 2022/2025 VM. It is not
+an automated command and remains unexecuted until an appropriate VM is
+available. Never claim rename, restart, or resume validation without recording
+an actual run of that procedure.
+
 ## Configuration rules
 
 - Configuration has an explicit schema version. Reject unsupported versions
@@ -106,6 +112,9 @@ Windows behavior.
   files.
 - NoCloud and hostname enablement are independent. A single global plugin flag
   is not an acceptable substitute.
+- `state.registry_path` must name a non-empty, dedicated subkey below
+  `HKLM\SOFTWARE`. Never accept the `SOFTWARE` root or a shared broad parent as
+  the lifecycle state target.
 - Installer upgrades must not overwrite administrator-owned configuration.
 - Never log, persist, or archive passwords, tokens, private keys, or raw
   user-data. Add redaction tests when a new sensitive field is introduced.
@@ -117,6 +126,10 @@ Windows behavior.
 - The state schema is versioned. State schema version 2 is current and must
   migrate a valid version 1 checkpoint without inventing plugin success. Reject
   unknown future schemas rather than guessing their meaning.
+- Detect an unsupported future schema in every checkpoint slot and fail closed,
+  including when an older understood slot is marked active. `Load` must not hide
+  future state by choosing the active/older slot, and `Save` must not overwrite
+  it as though no valid state existed.
 - A save must write and validate a complete versioned checkpoint before
   changing the active checkpoint marker. On Windows, flush the committed marker
   with `RegFlushKey` before returning so the checkpoint preceding a platform
@@ -164,6 +177,9 @@ Windows behavior.
   optional `local-hostname`. It must never open or execute `user-data`.
 - Use either an explicit seed directory or one unambiguous, already-mounted
   `CIDATA` ISO9660/FAT volume. Fail instead of choosing between candidates.
+- Skip query failures and unsupported filesystems on unrelated local drives;
+  they are not eligible NoCloud candidates. Keep discovery pending until all
+  enabled datasource candidates have returned unavailable.
 - The hostname provisioner accepts only the documented conservative 1–15
   character ASCII label, rejects all-numeric names, refuses domain-joined
   rename, and compares the active computer name idempotently.
@@ -202,12 +218,29 @@ default. `plugins.directory` is reserved and does not authorize execution.
 
 ## Concurrency rules
 
-- Service and foreground lifecycle runs must acquire the machine-wide named
-  lock `Global\WininitProvisioning` before loading or mutating lifecycle state.
+- Service and foreground lifecycle runs must acquire the Windows private-
+  namespace mutex `WininitPrivate\Provisioning` before loading or mutating
+  lifecycle state.
+- Create the private namespace with a boundary containing the Builtin
+  Administrators SID and no session SID, making it machine-wide across sessions.
+  Apply a protected DACL which grants access only to SYSTEM and Builtin
+  Administrators on both the namespace and mutex.
+- Windows mutex ownership is thread-affine. A worker goroutine locked to its OS
+  thread must wait for, own, and release the mutex. Accept abandoned ownership
+  as successful acquisition so Registry checkpoints can drive recovery.
+- Release must be idempotent and callable from any goroutine, while the pinned
+  owner thread performs `ReleaseMutex` and handle/namespace cleanup.
 - The lock applies regardless of the configured Registry state path. Do not
-  weaken it to a per-key or per-configuration lock.
-- A second process must fail clearly rather than run concurrently or wait in a
-  hidden retry loop.
+  weaken it to a per-key or per-configuration lock. A second process must fail
+  clearly rather than run concurrently or wait in a hidden retry loop.
+
+## Cancellation rules
+
+- Propagate plugin, state, and platform errors even when cancellation happens
+  concurrently.
+- Treat lifecycle termination as a clean cancellation only when the returned
+  error's cause is the root context cancellation. Do not swallow an unrelated
+  failure merely because the root context is also done.
 
 ## Packaging rules
 

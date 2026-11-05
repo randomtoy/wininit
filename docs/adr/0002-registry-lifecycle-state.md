@@ -21,6 +21,11 @@ valid slot for recovery and let the store assign each monotonically increasing
 checkpoint generation. Reject unknown schemas and invalid state. Use an
 in-memory implementation for unit tests.
 
+Fail closed when any checkpoint slot uses an unsupported future state schema,
+even if an older understood slot is marked active. Loading must not hide future
+state by choosing the active/older slot. Saving must not overwrite future state
+by treating it as missing or corrupt.
+
 State schema version 2 adds non-sensitive built-in plugin status, configuration
 identity, and restart-required checkpoints. A valid schema version 1 checkpoint
 is migrated to version 2 with provisioning disabled; migration never invents a
@@ -33,10 +38,14 @@ never expose Registry access directly to external plugins.
 
 The installation remains dependency-light and administrators can inspect state
 with standard Windows tools. The implementation must test partial writes,
-invalid active markers, schema incompatibility, flush failure, and recovery.
+invalid active markers, schema incompatibility, and recovery.
 `RegFlushKey` consumes system-wide hive resources, so state saves remain
 low-frequency lifecycle boundaries rather than a periodic loop. Operational
 state is deliberately preserved during ordinary upgrade and uninstall.
+
+Recovery and future-schema behavior are directly tested. The implementation
+checks `RegFlushKey` errors and fails the save, but an injected native flush-
+failure test remains future work.
 
 ## Alternatives considered
 

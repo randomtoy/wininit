@@ -45,6 +45,10 @@ func (s *RegistryStore) Load(ctx context.Context) (State, error) {
 		return State{}, fmt.Errorf("open registry state key: %w", err)
 	}
 	defer key.Close()
+	value, _, ok, recoveryErr := highestValidSlot(key)
+	if recoveryErr != nil {
+		return State{}, recoveryErr
+	}
 	active, _, activeErr := key.GetStringValue(activeValue)
 	if activeErr == nil {
 		if value, err := loadSlot(key, active); err == nil {
@@ -53,7 +57,6 @@ func (s *RegistryStore) Load(ctx context.Context) (State, error) {
 			return State{}, err
 		}
 	}
-	value, ok := highestValid(key)
 	if ok {
 		return value, nil
 	}
@@ -79,13 +82,17 @@ func (s *RegistryStore) Save(ctx context.Context, value State) error {
 		return fmt.Errorf("create registry state key: %w", err)
 	}
 	defer key.Close()
+	previous, bestSlot, hasPrevious, recoveryErr := highestValidSlot(key)
+	if recoveryErr != nil {
+		return recoveryErr
+	}
 	active, _, err := key.GetStringValue(activeValue)
 	if err != nil && !errors.Is(err, registry.ErrNotExist) {
 		return fmt.Errorf("read active checkpoint marker: %w", err)
 	}
 	if _, activeErr := loadSlot(key, active); activeErr != nil {
-		if _, slot, ok := highestValidSlot(key); ok {
-			active = slot
+		if hasPrevious {
+			active = bestSlot
 		} else {
 			active = slotBValue
 		}
@@ -94,8 +101,8 @@ func (s *RegistryStore) Save(ctx context.Context, value State) error {
 	if active == slotAValue {
 		target = slotBValue
 	}
-	if current, ok := highestValid(key); ok {
-		value.Generation = current.Generation + 1
+	if hasPrevious {
+		value.Generation = previous.Generation + 1
 	} else {
 		value.Generation = 1
 	}
@@ -137,20 +144,18 @@ func loadSlot(key registry.Key, name string) (State, error) {
 	return decodeCheckpoint(data)
 }
 
-func highestValid(key registry.Key) (State, bool) {
-	best, _, found := highestValidSlot(key)
-	return best, found
-}
-
-func highestValidSlot(key registry.Key) (State, string, bool) {
+func highestValidSlot(key registry.Key) (State, string, bool, error) {
 	var best State
 	var bestSlot string
 	var found bool
 	for _, slot := range []string{slotAValue, slotBValue} {
 		value, err := loadSlot(key, slot)
+		if errors.Is(err, ErrUnsupportedSchema) {
+			return State{}, "", false, err
+		}
 		if err == nil && (!found || value.Generation > best.Generation) {
 			best, bestSlot, found = value, slot, true
 		}
 	}
-	return best, bestSlot, found
+	return best, bestSlot, found, nil
 }

@@ -66,18 +66,22 @@ hive, it is restricted to low-frequency lifecycle boundaries. Plugin state
 stores only a SHA-256 input identity; it does not retain the raw hostname or
 metadata required to replay an operation.
 
-The machine-wide `Global\WininitProvisioning` lifecycle lock prevents an SCM
-service and console process—or two differently configured processes—from
+The `WininitPrivate\Provisioning` mutex is held in a Windows private namespace
+whose boundary uses the Builtin Administrators SID without a session SID. A
+protected DACL grants namespace and mutex access only to SYSTEM and Builtin
+Administrators. It prevents an SCM service and an elevated console process—or
+two differently configured elevated processes in different sessions—from
 mutating the machine concurrently. A second process fails explicitly.
 
 ## NoCloud and hostname controls
 
 NoCloud discovery never picks between multiple eligible volumes. An explicit
 seed directory avoids enumeration; discovery otherwise requires exactly one
-mounted volume labelled `CIDATA` with an ISO9660 or FAT filesystem. The
-`meta-data` file must be regular and no larger than 64 KiB; aliases, multiple
-YAML documents, excessive nesting, and duplicate keys are rejected. Raw
-metadata is not persisted or included in diagnostics.
+mounted volume labelled `CIDATA` with an ISO9660 or FAT filesystem. Query
+failures and unsupported filesystems on unrelated drives are skipped without
+opening their contents. The `meta-data` file must be regular and no larger than
+64 KiB; aliases, multiple YAML documents, excessive nesting, and duplicate keys
+are rejected. Raw metadata is not persisted or included in diagnostics.
 
 Hostname input is restricted to the documented conservative ASCII label. The
 agent refuses domain-joined rename and does not split or truncate an FQDN.

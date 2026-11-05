@@ -81,3 +81,46 @@ func TestRegistryFutureSchemaDoesNotFallBackAndReplay(t *testing.T) {
 		t.Fatalf("Load error=%v", err)
 	}
 }
+
+func TestRegistryRecoveryAndSaveRejectFutureSlot(t *testing.T) {
+	for _, marker := range []string{"missing", "invalid", "wrong_type", "older_valid"} {
+		t.Run(marker, func(t *testing.T) {
+			path := fmt.Sprintf(`SOFTWARE\WininitTests\%d`, time.Now().UnixNano())
+			store := newRegistryStore(registry.CURRENT_USER, path)
+			t.Cleanup(func() { _ = registry.DeleteKey(registry.CURRENT_USER, path) })
+			value := Initial(time.Now())
+			if err := store.Save(context.Background(), value); err != nil {
+				t.Fatal(err)
+			}
+			key, err := registry.OpenKey(registry.CURRENT_USER, path, registry.ALL_ACCESS)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer key.Close()
+			future := value
+			future.SchemaVersion++
+			if err := key.SetBinaryValue(slotBValue, rawCheckpoint(t, future)); err != nil {
+				t.Fatal(err)
+			}
+			switch marker {
+			case "missing":
+				err = key.DeleteValue(activeValue)
+			case "invalid":
+				err = key.SetStringValue(activeValue, "broken")
+			case "wrong_type":
+				err = key.SetDWordValue(activeValue, 123)
+			case "older_valid":
+				err = key.SetStringValue(activeValue, slotAValue)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := store.Load(context.Background()); !errors.Is(err, ErrUnsupportedSchema) {
+				t.Fatalf("Load() error=%v", err)
+			}
+			if err := store.Save(context.Background(), value); !errors.Is(err, ErrUnsupportedSchema) {
+				t.Fatalf("Save() error=%v", err)
+			}
+		})
+	}
+}

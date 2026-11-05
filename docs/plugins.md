@@ -74,9 +74,12 @@ plugins:
 ```
 
 Discovery considers mounted Windows volumes labelled `CIDATA` whose filesystem
-is ISO9660 or FAT. Exactly one eligible volume must exist. No match is an
-unavailable-datasource error; multiple matches are an ambiguity error. The
-agent never chooses the first enumerated candidate.
+is ISO9660 or FAT. Exactly one eligible volume must exist. Query failures and
+unsupported filesystems on unrelated drives are skipped. No eligible match is
+an unavailable-datasource result; multiple eligible matches are an ambiguity
+error. The agent never chooses the first enumerated candidate. The discovery
+checkpoint remains pending while other enabled datasource candidates have not
+yet returned unavailable.
 
 ### Disable all provisioning behavior
 
@@ -170,9 +173,19 @@ runtime result when the current plugin configuration hash differs.
 ## Concurrency and durable mutation checkpoints
 
 Before running the lifecycle pipeline, both SCM and foreground modes acquire
-the machine-wide named lock `Global\WininitProvisioning`. The lock prevents
-concurrent mutation even when two processes use different Registry paths. A
-second process fails clearly instead of waiting or running concurrently.
+the mutex `WininitPrivate\Provisioning` in a Windows private namespace. Its
+boundary uses the Builtin Administrators SID without a session SID, and
+protected DACLs on the namespace and mutex grant access only to SYSTEM and
+Builtin Administrators. The object therefore prevents concurrent mutation
+across Windows sessions even when two processes use different Registry paths.
+A second process fails clearly instead of waiting or running concurrently.
+
+A worker goroutine pinned to one OS thread waits for, owns, and releases the
+thread-affine Windows mutex. Abandoned ownership is accepted so normal durable
+checkpoint reconciliation can recover after a crashed owner. Release is
+idempotent and may be requested from any goroutine; the pinned owner thread
+performs the actual mutex release and handle cleanup. The namespace remains
+open for the process lifetime.
 
 Before calling a platform mutation, the lifecycle persists a `running` plugin
 checkpoint. The Registry store writes and verifies an inactive checkpoint,

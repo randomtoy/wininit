@@ -64,9 +64,17 @@ available: the next run rediscovers fresh metadata and compares it with active
 and configured Windows names. Changed metadata is new input; an unavailable
 seed produces `no_datasource` rather than replaying an old target.
 
-Acquire the machine-wide named lock `Global\WininitProvisioning` for both SCM
-and foreground lifecycles. The lock prevents concurrent mutations regardless
-of the configured Registry state path.
+Acquire `WininitPrivate\Provisioning`, a mutex in a Windows private namespace,
+for both SCM and foreground lifecycles. Use a boundary descriptor containing
+the Builtin Administrators SID with no session SID and protected DACLs which
+grant access only to SYSTEM and Builtin Administrators. The lock prevents
+concurrent mutations across sessions regardless of the configured Registry
+state path.
+
+Use a goroutine pinned to its OS thread to wait for, own, and release the Windows
+mutex. Accept abandoned ownership so durable checkpoint reconciliation can
+recover after a crashed owner. Make the release request idempotent and callable
+from any goroutine while the owner thread performs the actual release.
 
 ## Consequences
 
@@ -81,6 +89,12 @@ the agent must not guess. An explicit seed directory avoids discovery
 ambiguity. A hostname accepted for rename may still be pending inside Windows;
 disabling the plugin prevents agent execution and reconciliation but is not a
 promise to undo a rename already accepted by the operating system.
+
+Errors querying unrelated drives and unsupported filesystems do not turn those
+drives into candidates and do not fail discovery. An enabled datasource remains
+pending until every enabled candidate has returned unavailable. Cancellation
+is reported as clean only when the returned error is caused by the root context
+cancellation; concurrent unrelated failures remain visible.
 
 State migration and reboot reconciliation add durable compatibility behavior
 which requires unit, native Windows, and eventually real-VM tests. Real Windows
@@ -107,3 +121,4 @@ Server 2022/2025 reboot/resume validation remains pending.
 
 - [cloud-init NoCloud datasource](https://docs.cloud-init.io/en/latest/reference/datasources/nocloud.html)
 - [Microsoft `SetComputerNameExW`](https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-setcomputernameexw)
+- [Microsoft kernel object namespaces](https://learn.microsoft.com/en-us/windows/win32/sync/object-namespaces)

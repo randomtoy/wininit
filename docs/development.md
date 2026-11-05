@@ -22,9 +22,13 @@ migration.
 Lifecycle tests must also verify one reconciliation per process start, no
 automatic retry loop, configuration-hash gating of saved status, fresh metadata
 after restart, and disablement precedence over pending work. State-store tests
-cover active-marker recovery and durable Registry save behavior. The current
-lock test acquires the named lock through two handles in one process; a true
-multi-process exclusion test is still pending.
+cover active-marker recovery, fail-closed future-schema behavior, and durable
+Registry save behavior. Windows lock tests cover protected private-namespace
+creation, protected permissions, contention, idempotent release from another
+goroutine, reacquisition, and recovery after a helper process abandons
+ownership. MSI smoke testing also starts a competing console lifecycle while
+the installed LocalSystem service runs and requires a clear contention error.
+These Windows-specific checks execute in the elevated native CI job.
 
 ## Common commands
 
@@ -127,3 +131,10 @@ administrator-initiated restart, and active-name reconciliation. This real-VM
 validation is pending; the repository does not claim that a VM restart has been
 performed or tested. The repository must never contain or download
 copyrighted Windows installation media or license keys.
+
+Follow the concrete [NoCloud and hostname VM acceptance procedure](../tests/e2e/README.md)
+only on a disposable, licensed, non-domain-joined test VM. The procedure is
+currently pending and unexecuted because no suitable VM is available. Record
+the OS build, hypervisor, source commit, logs, and every acceptance result when
+it is eventually run; do not convert the written procedure itself into a claim
+of successful rename or restart validation.

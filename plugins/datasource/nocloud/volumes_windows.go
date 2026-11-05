@@ -4,7 +4,6 @@ package nocloud
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"runtime"
 	"strings"
@@ -53,11 +52,10 @@ func FindVolumes(ctx context.Context) ([]string, error) {
 		}
 		var label, filesystem [256]uint16
 		err = windows.GetVolumeInformation(path, &label[0], uint32(len(label)), nil, nil, nil, &filesystem[0], uint32(len(filesystem)))
-		if errors.Is(err, windows.ERROR_NOT_READY) || errors.Is(err, windows.ERROR_ACCESS_DENIED) {
-			continue
-		}
 		if err != nil {
-			return nil, fmt.Errorf("query local volume: %w", err)
+			// Inaccessible or empty unrelated drives do not invalidate another
+			// eligible seed. No directory contents are probed during enumeration.
+			continue
 		}
 		if !strings.EqualFold(windows.UTF16ToString(label[:]), "cidata") {
 			continue
@@ -66,7 +64,7 @@ func FindVolumes(ctx context.Context) ([]string, error) {
 		case "FAT", "FAT32", "CDFS", "ISO9660":
 			roots = append(roots, root)
 		default:
-			return nil, errors.New("CIDATA volume requires FAT or ISO9660 filesystem")
+			continue
 		}
 	}
 	return roots, nil

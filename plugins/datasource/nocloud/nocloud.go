@@ -74,6 +74,10 @@ func (p *Plugin) Discover(ctx context.Context) (plugin.Metadata, error) {
 		return plugin.Metadata{}, errors.New("open NoCloud meta-data failed")
 	}
 	defer file.Close()
+	openedInfo, err := file.Stat()
+	if err != nil || !openedInfo.Mode().IsRegular() || !os.SameFile(info, openedInfo) {
+		return plugin.Metadata{}, errors.New("NoCloud meta-data changed while opening or is not a regular file")
+	}
 	data, err := io.ReadAll(io.LimitReader(file, MaxMetadataBytes+1))
 	if err != nil {
 		return plugin.Metadata{}, errors.New("read NoCloud meta-data failed")
