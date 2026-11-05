@@ -33,6 +33,7 @@ func NewWithPlugins(store state.Store, logger *slog.Logger, catalog plugin.Catal
 // Run reconciles enabled plugins once, then waits for cancellation. A restart
 // retries failed work and checks pending changes against actual platform state.
 func (e *Engine) Run(ctx context.Context) error {
+	e.logger.InfoContext(ctx, "loading lifecycle checkpoint")
 	current, err := e.store.Load(ctx)
 	if errors.Is(err, state.ErrNotFound) {
 		current = state.Initial(e.now())
@@ -45,9 +46,11 @@ func (e *Engine) Run(ctx context.Context) error {
 	current.Phase = state.PhaseAgentRunning
 	current.LastError = nil
 	current.UpdatedAt = e.now().UTC()
+	e.logger.InfoContext(ctx, "saving running lifecycle checkpoint")
 	if err := e.store.Save(ctx, current); err != nil {
 		return fmt.Errorf("save running lifecycle state: %w", err)
 	}
+	e.logger.InfoContext(ctx, "running lifecycle checkpoint saved")
 	if err := e.reconcile(ctx, &current); err != nil {
 		if ctx.Err() == nil || (!errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)) {
 			return fmt.Errorf("reconcile plugins: %w", err)

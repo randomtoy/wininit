@@ -97,11 +97,13 @@ func RunService() error {
 	store := state.NewRegistryStore(cfg.State.RegistryPath)
 	engine := lifecycle.NewWithPlugins(store, logger, configuredPlugins(cfg), pluginConfigurationHash(cfg))
 	return service.Run(logger, func(ctx context.Context) error {
+		logger.InfoContext(ctx, "acquiring lifecycle lock")
 		release, err := state.AcquireMachineLock(ctx)
 		if err != nil {
 			return err
 		}
 		defer release()
+		logger.InfoContext(ctx, "lifecycle lock acquired")
 		return engine.Run(ctx)
 	})
 }

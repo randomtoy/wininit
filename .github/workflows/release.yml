@@ -101,14 +101,21 @@ jobs:
             -ExpectedMsiVersion '${{ steps.package.outputs.msi_version }}' `
             -ExpectedExecutableVersion "$env:GITHUB_REF_NAME" `
             -ArtifactsDirectory ./artifacts
+      - name: Stage diagnostics on failure
+        if: failure()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path ./artifacts/agent-logs | Out-Null
+          if (Test-Path -LiteralPath C:/ProgramData/WinInit/logs) {
+            Copy-Item C:/ProgramData/WinInit/logs/*.log ./artifacts/agent-logs/ -ErrorAction Stop
+            Get-Content C:/ProgramData/WinInit/logs/wininit.log -Tail 100
+          }
       - name: Upload diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-failure-diagnostics-${{ github.run_id }}
-          path: |
-            artifacts/**
-            C:/ProgramData/WinInit/logs/**
+          path: artifacts/**
           if-no-files-found: ignore
           retention-days: 14
       - name: Upload release artifacts

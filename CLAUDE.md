@@ -275,6 +275,10 @@ default. `plugins.directory` is reserved and does not authorize execution.
   It must check elevation explicitly before tests which require SCM or MSI
   administration and report the documented outcome; it must not fabricate a
   successful smoke test.
+- Stage failure logs from ProgramData into the workspace artifact directory
+  before upload; Windows artifacts cannot share a root across different drives.
+- Keep structured startup milestones around lock acquisition and the first
+  Registry checkpoint so SCM-running/engine-starting failures are diagnosable.
 - Release jobs run only for trusted version tags, use minimal token
   permissions, produce EXE/MSI/checksums, and publish those exact artifacts.
 - Pin third-party actions to immutable commits where practical and keep them
