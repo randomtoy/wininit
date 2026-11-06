@@ -18,6 +18,9 @@ import (
 // OpenRelative uses an already-open directory handle. No component may reparse.
 // Omitting FILE_SHARE_DELETE pins directories against rename while in use.
 func OpenRelative(parent windows.Handle, name string, access, disposition, options uint32, sd *windows.SECURITY_DESCRIPTOR) (*os.File, error) {
+	if parent != 0 && (!ordinaryComponent(name) || strings.ContainsAny(name, "\\/:\x00")) {
+		return nil, errors.New("expected one unambiguous filesystem component")
+	}
 	objectName, err := windows.NewNTUnicodeString(name)
 	if err != nil {
 		return nil, err
@@ -47,8 +50,8 @@ func OpenRelative(parent windows.Handle, name string, access, disposition, optio
 }
 
 func OpenLocal(path string, access, options uint32) (*os.File, error) {
-	if !identity.LocalAbsolutePath(path) || len(filepath.VolumeName(path)) != 2 || strings.Contains(path[2:], ":") {
-		return nil, errors.New("expected a local drive-letter path")
+	if err := checkLocalPath(path); err != nil {
+		return nil, err
 	}
 	volume, err := windows.UTF16PtrFromString(filepath.VolumeName(path) + `\`)
 	if err != nil {
@@ -59,6 +62,35 @@ func OpenLocal(path string, access, options uint32) (*os.File, error) {
 		return nil, errors.New("remote or unknown drives are not permitted")
 	}
 	return OpenRelative(0, `\??\`+filepath.Clean(path), access, windows.FILE_OPEN, options, nil)
+}
+
+// The verifier uses NT handles while process creation uses Win32 paths. Reject
+// stream/device/trailing-dot aliases so they cannot name different objects.
+func checkLocalPath(path string) error {
+	if !identity.LocalAbsolutePath(path) || len(filepath.VolumeName(path)) != 2 || strings.Contains(path[2:], ":") {
+		return errors.New("expected a local drive-letter path without streams")
+	}
+	for _, component := range strings.FieldsFunc(path[2:], func(ch rune) bool { return ch == '\\' || ch == '/' }) {
+		if !ordinaryComponent(component) {
+			return errors.New("ambiguous Win32 path component is not permitted")
+		}
+	}
+	return nil
+}
+
+func ordinaryComponent(name string) bool {
+	if name == "" || name == "." || name == ".." || strings.HasSuffix(name, ".") || strings.HasSuffix(name, " ") {
+		return false
+	}
+	base, _, _ := strings.Cut(strings.ToUpper(name), ".")
+	switch base {
+	case "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$":
+		return false
+	}
+	if len(base) == 4 && (strings.HasPrefix(base, "COM") || strings.HasPrefix(base, "LPT")) && base[3] >= '0' && base[3] <= '9' {
+		return false
+	}
+	return true
 }
 
 // TrustedACL requires an administrator/SYSTEM owner and a non-null DACL.
@@ -107,6 +139,9 @@ func trusted(sid *windows.SID) bool {
 }
 
 func TrustedFile(path string, secret bool) (*os.File, error) {
+	if err := checkLocalPath(path); err != nil {
+		return nil, err
+	}
 	parent, err := OpenLocal(filepath.Dir(path), windows.READ_CONTROL|windows.FILE_LIST_DIRECTORY, windows.FILE_DIRECTORY_FILE)
 	if err != nil {
 		return nil, fmt.Errorf("open protected parent directory: %w", err)

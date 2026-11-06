@@ -59,6 +59,13 @@ func TestProtectedPasswordFiles(t *testing.T) {
 		t.Fatalf("protected password read failed: %v", err)
 	}
 	clear(data)
+	stream := path + ":hidden"
+	if err := os.WriteFile(stream, []byte("fixture-stream-secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := adapter.ReadPassword(ctx, stream); err == nil {
+		t.Fatal("password alternate data stream accepted")
+	}
 	protectedTestPath(t, path, "(A;;GR;;;BU)")
 	if _, err := adapter.ReadPassword(ctx, path); err == nil || strings.Contains(err.Error(), "fixture-protected") {
 		t.Fatal("readable password file accepted or leaked")

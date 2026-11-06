@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os/exec"
 	"time"
@@ -118,6 +119,11 @@ func (p *ConfigDrive) Discover(parent context.Context) (plugin.Metadata, error) 
 		}
 		if process != nil && process.startFailure != nil {
 			return plugin.Metadata{}, process.startFailure
+		}
+		if process != nil {
+			if status := process.exitStatus.Load(); status != 0 {
+				return plugin.Metadata{}, fmt.Errorf("external ConfigDrive exited before protocol handshake (exit code 0x%x)", uint32(status))
+			}
 		}
 		return plugin.Metadata{}, errors.New("external ConfigDrive startup or protocol handshake failed")
 	}

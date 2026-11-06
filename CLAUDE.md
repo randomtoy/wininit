@@ -238,6 +238,9 @@ an actual run of that procedure.
 - Native file helpers must request FILE_READ_ATTRIBUTES before validating a
   handle, including traversal-only directories and write-only replacements.
   Keep syscall causes without echoing untrusted paths or payloads.
+- Protected files/executables must reject ADS, DOS-device names, dot/space
+  aliases, and relative components, so NT verification and Win32 execution
+  identify the same object. Handle-relative opens accept one component only.
 - Password policy is machine-wide, bounded, and independently opt-in. Preserve
   force-logoff/complexity settings. Native integration tests restore exact raw
   prior policy even on failure; run them only on a disposable elevated host.
@@ -340,6 +343,10 @@ an actual run of that procedure.
   It must check elevation explicitly before tests which require SCM or MSI
   administration and report the documented outcome; it must not fabricate a
   successful smoke test.
+- Run isolated integration tests even when native unit tests fail, to surface
+  independent account/ACL/policy failures. Keep the original unit failure fatal.
+- Process startup diagnostics may report fixed stages and numeric OS/exit
+  codes; never expose raw child handshake, stderr, or RPC error contents.
 - Stage failure logs from ProgramData into the workspace artifact directory
   before upload; Windows artifacts cannot share a root across different drives.
 - Keep structured startup milestones around lock acquisition and the first

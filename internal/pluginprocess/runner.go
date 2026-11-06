@@ -25,6 +25,7 @@ type processRunner struct {
 	cancelled      atomic.Bool
 	once           sync.Once
 	startFailure   error
+	exitStatus     atomic.Uint64
 }
 
 func newProcessRunner(cmd *exec.Cmd, directory string) (*processRunner, error) {
@@ -86,8 +87,15 @@ func processError(operation string, cause error) error {
 	}
 	return fmt.Errorf("external ConfigDrive %s failed", operation)
 }
-func (r *processRunner) close()                     { r.once.Do(func() { r.control.close() }) }
-func (r *processRunner) Wait(context.Context) error { defer r.close(); return r.cmd.Wait() }
+func (r *processRunner) close() { r.once.Do(func() { r.control.close() }) }
+func (r *processRunner) Wait(context.Context) error {
+	defer r.close()
+	err := r.cmd.Wait()
+	if r.cmd.ProcessState != nil {
+		r.exitStatus.Store(1<<32 | uint64(uint32(r.cmd.ProcessState.ExitCode())))
+	}
+	return err
+}
 func (r *processRunner) Kill(context.Context) error {
 	err := r.control.kill(r.cmd)
 	if errors.Is(err, os.ErrProcessDone) {

@@ -86,8 +86,10 @@ jobs:
       - name: Verify dependencies
         run: go mod verify
       - name: Run Windows tests
+        id: windows-unit
         run: go test ./...
       - name: Run isolated Windows integration tests
+        if: success() || steps.windows-unit.outcome == 'failure'
         run: go test -tags=integration ./...
       - name: Build executable and MSI
         id: package
