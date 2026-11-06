@@ -155,7 +155,7 @@ func (e *Engine) reconcile(ctx context.Context, current *state.State) error {
 }
 
 func (e *Engine) pluginFailure(ctx context.Context, current *state.State, name string, cause error) error {
-	if ctx.Err() != nil && (errors.Is(cause, context.Canceled) || errors.Is(cause, context.DeadlineExceeded)) {
+	if rootCancellationOnly(ctx, cause) {
 		return cause
 	}
 	checkpoint := current.Plugins[name]

@@ -101,3 +101,18 @@ func TestPowerShellExecutionCancellationIsBounded(t *testing.T) {
 		t.Fatal("cancelled execution did not terminate promptly")
 	}
 }
+
+func TestPowerShellSessionDeadlineIsNotRootCancellation(t *testing.T) {
+	settings := psSettings(t, "ps-hang")
+	settings.Process.TimeoutSeconds = 3
+	p := psAdapter(settings)
+	plan, err := p.Prepare(context.Background(), plugin.Metadata{InstanceID: "fixture", Datasource: "nocloud"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer plan.Close()
+	result, err := plan.Execute(context.Background())
+	if !errors.Is(err, errPowerShellSessionTimeout) || errors.Is(err, context.DeadlineExceeded) || result.FailureCode != "timeout" {
+		t.Fatalf("private deadline can hide as lifecycle cancellation: %#v %v", result, err)
+	}
+}

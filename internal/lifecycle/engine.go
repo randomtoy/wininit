@@ -60,7 +60,7 @@ func (e *Engine) Run(ctx context.Context) error {
 	}
 	e.logger.InfoContext(ctx, "running lifecycle checkpoint saved")
 	if err := e.reconcile(ctx, &current); err != nil {
-		if ctx.Err() == nil || (!errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)) {
+		if !rootCancellationOnly(ctx, err) {
 			return fmt.Errorf("reconcile plugins: %w", err)
 		}
 		current.Provisioning = "pending"

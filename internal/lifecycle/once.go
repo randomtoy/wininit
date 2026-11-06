@@ -91,7 +91,7 @@ func (e *Engine) executeOnce(ctx context.Context, current *state.State, provisio
 		if record.FailureCode == "" {
 			record.FailureCode = "plugin_failed"
 		}
-		if ctx.Err() != nil && (errors.Is(executionErr, context.Canceled) || errors.Is(executionErr, context.DeadlineExceeded)) {
+		if rootCancellationOnly(ctx, executionErr) {
 			record.Status, record.FailureCode = "interrupted", "cancelled"
 		}
 	}

@@ -14,6 +14,7 @@ const CurrentSchemaVersion = 3
 const MaxExecutions = 128
 
 var (
+	ErrUnsafePermissions = errors.New("unsafe Registry state permissions; protect the dedicated key and its ancestors before retrying")
 	ErrNotFound          = errors.New("state not found")
 	ErrUnsupportedSchema = errors.New("unsupported state schema")
 	ErrCorrupt           = errors.New("corrupt state")

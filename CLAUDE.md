@@ -494,3 +494,14 @@ acceptance on a replacement Windows Server 2025 guest, including one explicitly
 authorized administrator reboot, unchanged one-shot journal/counter, automatic
 service resume, and cleanup. It does not validate attached media, hostname
 rename, or Server 2022. Guest deployment used the development CLI, not MSI.
+
+PR 5 review hardening: before loading or saving production HKLM state, validate
+the dedicated key and every ancestor from SOFTWARE. Only SYSTEM, Administrators
+and Windows TrustedInstaller may own/mutate them; other principals may read.
+Create missing keys atomically with protected SYSTEM/Administrators ACLs. Reject
+unsafe existing keys without rewriting permissions or losing journal history.
+Validate the boot marker ACL too. HKCU remains an isolated storage-test facility.
+
+Lifecycle cancellation must match the root context error. A private PowerShell
+session deadline has a distinct context cause and must retain failed/timeout
+evidence even if SCM stop or a root deadline arrives concurrently.

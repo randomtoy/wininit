@@ -256,3 +256,48 @@ func TestOneShotBothRecoverySlotsContainIntentBeforeDispatch(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+type cancelAfterFailureSave struct {
+	*state.MemoryStore
+	cancel context.CancelFunc
+}
+
+func (s cancelAfterFailureSave) Save(ctx context.Context, value state.State) error {
+	if err := s.MemoryStore.Save(ctx, value); err != nil {
+		return err
+	}
+	if value.Provisioning == "failed" {
+		s.cancel()
+	}
+	return nil
+}
+func TestConcurrentStopDoesNotErasePrivateExecutionDeadline(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	engine, store, _, p := pipeline(t, true, true)
+	p.err = context.DeadlineExceeded // a plugin session deadline, not ctx's cancellation
+	engine.store = cancelAfterFailureSave{store, cancel}
+	if err := engine.Run(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("plugin deadline was hidden by stop: %v", err)
+	}
+	saved, err := store.Load(context.Background())
+	if err != nil || saved.Provisioning != "failed" || saved.LastError == nil || saved.Phase != state.PhaseFoundationError {
+		t.Fatalf("terminal failure was erased: %#v %v", saved, err)
+	}
+}
+
+func TestConcurrentStopDoesNotEraseJoinedFailure(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	engine, store, _, p := pipeline(t, true, true)
+	failure := errors.New("fixture persistence failure")
+	p.before = cancel
+	p.err = errors.Join(context.Canceled, failure)
+	if err := engine.Run(ctx); !errors.Is(err, failure) {
+		t.Fatalf("joined failure hidden by stop: %v", err)
+	}
+	saved, err := store.Load(context.Background())
+	if err != nil || saved.Provisioning != "failed" || saved.LastError == nil {
+		t.Fatalf("joined failure lost: %#v %v", saved, err)
+	}
+}

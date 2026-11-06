@@ -42,6 +42,11 @@ func (s *RegistryStore) BootID(ctx context.Context) (string, error) {
 	}
 	key := registry.Key(handle)
 	defer key.Close()
+	if s.root == registry.LOCAL_MACHINE {
+		if err := trustedRegistryKey(key); err != nil {
+			return "", err
+		}
+	}
 	if disposition == 1 {
 		data := make([]byte, 32)
 		if _, err := rand.Read(data); err != nil {

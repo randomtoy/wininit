@@ -21,6 +21,8 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+var errPowerShellSessionTimeout = errors.New("PowerShell plugin session deadline exceeded")
+
 var _ plugin.OnceProvisioner = (*PowerShell)(nil)
 
 func (*PowerShell) Apply(context.Context, plugin.Metadata) (plugin.Result, error) {
@@ -41,7 +43,7 @@ func (p *PowerShell) Prepare(parent context.Context, metadata plugin.Metadata) (
 	if !ok || (metadata.Datasource != "nocloud" && metadata.Datasource != "configdrive") {
 		return prepared, errors.New("PowerShell user-data requires the host-selected NoCloud or ConfigDrive source")
 	}
-	ctx, cancel := context.WithTimeout(parent, time.Duration(p.settings.Process.TimeoutSeconds)*time.Second)
+	ctx, cancel := context.WithTimeoutCause(parent, time.Duration(p.settings.Process.TimeoutSeconds)*time.Second, errPowerShellSessionTimeout)
 	var client *goplugin.Client
 	var image io.Closer
 	closeSession := func() {
@@ -76,7 +78,7 @@ func (p *PowerShell) Prepare(parent context.Context, metadata plugin.Metadata) (
 		return prepared, errors.New("PowerShell plugin SHA-256 mismatch")
 	}
 	if err = ctx.Err(); err != nil {
-		return prepared, err
+		return prepared, powerShellContextError(ctx)
 	}
 	var process *processRunner
 	var startupFailure error
@@ -115,7 +117,7 @@ func (p *PowerShell) Prepare(parent context.Context, metadata plugin.Metadata) (
 	connection, clientErr := client.Client()
 	if clientErr != nil {
 		if ctx.Err() != nil && (startupCancelled || process != nil && (process.cancelled.Load() || process.startCancelled)) {
-			return prepared, ctx.Err()
+			return prepared, powerShellContextError(ctx)
 		}
 		if startupFailure != nil {
 			return prepared, startupFailure
@@ -204,7 +206,15 @@ func (p *PowerShell) Prepare(parent context.Context, metadata plugin.Metadata) (
 }
 func powerShellRPCError(ctx context.Context, process *processRunner, cause error, operation string) error {
 	if cancelledRPC(ctx, process, cause) {
-		return ctx.Err()
+		return powerShellContextError(ctx)
 	}
 	return fmt.Errorf("PowerShell plugin %s failed (RPC code %s)", operation, status.Code(cause))
+}
+
+// A private session deadline must not masquerade as the root lifecycle deadline.
+func powerShellContextError(ctx context.Context) error {
+	if errors.Is(context.Cause(ctx), errPowerShellSessionTimeout) {
+		return errPowerShellSessionTimeout
+	}
+	return ctx.Err()
 }

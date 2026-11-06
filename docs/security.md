@@ -156,3 +156,12 @@ planned release-hardening work.
 ## Reporting
 
 Follow [SECURITY.md](../SECURITY.md) to report vulnerabilities privately.
+
+Production Registry state is also an authorization boundary for replay control.
+A valid checksum does not authenticate a checkpoint written by an ordinary
+user. Load/save validate the key and its ancestors from SOFTWARE: ownership and
+mutation rights belong only to SYSTEM, Administrators or Windows servicing
+(TrustedInstaller). New keys receive protected SYSTEM/Administrators ACLs.
+Unsafe existing permissions fail visibly; they are never silently repaired and
+state is never cleared to recover. Preserve and audit journal evidence before
+an administrator repairs an existing state path.

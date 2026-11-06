@@ -18,8 +18,9 @@ EXEs were cross-built with Go 1.27.3. Their hashes were compared on the guest:
 | PowerShell plugin EXE | `cd7464a984738ec3bb27e6bdbdb3a2f953fc09d0bf06b31770c8bd11fbed9c05` |
 | ConfigDrive plugin EXE | `516d5273d3e728c18005a9807526ffe5c74e04ffa601c46cf77ba928672ab631` |
 
-Subsequent PR changes adjust native test expectations and documentation only;
-the tested production Go sources are unchanged.
+This run predates PR 5 review hardening of Registry permissions and concurrent
+cancellation. Those follow-up changes are covered by native Windows regression
+and MSI CI; this record describes the earlier guest candidate precisely.
 
 No prior WinInit service, configuration, installation directory, or state was
 present. The candidate was deployed through the development CLI as an

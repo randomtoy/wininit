@@ -86,3 +86,9 @@ Windows Server 2022 and the broader media/cloud matrix remain pending.
 Before Execute, started intent is committed and flushed into both alternating
 checkpoint slots. Recovery from one damaged slot therefore retains replay
 protection; terminal evidence may conservatively recover as started/unknown.
+
+PR 5 review additionally enforces the Registry ownership/DACL boundary before
+checkpoint load/save, including ancestors and the boot marker. Checksums detect
+corruption; protected storage prevents ordinary users from forging replay
+permission. Unsafe existing keys are rejected without automatic ACL repair.
+Private session deadline causes remain distinct from root lifecycle cancellation.

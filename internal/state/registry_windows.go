@@ -37,7 +37,7 @@ func (s *RegistryStore) Load(ctx context.Context) (State, error) {
 	if err := ctx.Err(); err != nil {
 		return State{}, err
 	}
-	key, err := registry.OpenKey(s.root, s.path, registry.QUERY_VALUE)
+	key, err := s.openStateKey(ctx, registry.QUERY_VALUE, false)
 	if errors.Is(err, registry.ErrNotExist) {
 		return State{}, ErrNotFound
 	}
@@ -77,7 +77,7 @@ func (s *RegistryStore) Save(ctx context.Context, value State) error {
 	if err := value.Validate(); err != nil {
 		return err
 	}
-	key, _, err := registry.CreateKey(s.root, s.path, registry.ALL_ACCESS)
+	key, err := s.openStateKey(ctx, registry.ALL_ACCESS, true)
 	if err != nil {
 		return fmt.Errorf("create registry state key: %w", err)
 	}

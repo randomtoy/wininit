@@ -157,3 +157,10 @@ exposes neither script/output bytes nor Registry/platform handles.
 Before Execute, started intent is committed and flushed into both alternating
 checkpoint slots. Recovery from one damaged slot therefore retains replay
 protection; terminal evidence may conservatively recover as started/unknown.
+
+The Registry state key and its ancestors must prevent ordinary-user mutation.
+The agent validates ownership and write/delete/ACL rights before reading or
+saving checkpoints; new keys are protected. Unsafe existing keys fail closed.
+Do not delete history or choose an empty state path to bypass that error.
+Private session timeouts retain failed/timeout evidence even when service stop
+arrives at the same time.
