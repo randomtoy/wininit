@@ -184,3 +184,42 @@ func TestOneShotDisablementAndAbsentPayloadDoNotConsumeIntent(t *testing.T) {
 		t.Fatal("reenablement replayed a completed script")
 	}
 }
+
+func TestOneShotRunsAfterEarlierRebootRequestWithRunningAggregate(t *testing.T) {
+	engine, _, p, current := onceEngine(t)
+	earlier := &countingProvisioner{result: plugin.Result{RebootRequired: true}}
+	engine.catalog.Provisioners = append([]plugin.ProvisionerRegistration{{Enabled: true, Plugin: earlier}}, engine.catalog.Provisioners...)
+	if err := engine.reconcile(context.Background(), &current); err != nil || p.executions != 1 || current.Provisioning != "reboot_required" {
+		t.Fatalf("state=%#v error=%v", current, err)
+	}
+}
+
+func TestOneShotJournalSurvivesInstanceSwitchAndRefusesEviction(t *testing.T) {
+	engine, _, p, current := onceEngine(t)
+	source := engine.catalog.Datasources[0].Plugin.(*countingDatasource)
+	first := source.metadata.InstanceID
+	if err := engine.reconcile(context.Background(), &current); err != nil {
+		t.Fatal(err)
+	}
+	source.metadata.InstanceID = "second-instance"
+	if err := engine.reconcile(context.Background(), &current); err != nil {
+		t.Fatal(err)
+	}
+	source.metadata.InstanceID = first
+	if err := engine.reconcile(context.Background(), &current); err != nil || p.executions != 2 {
+		t.Fatal("instance switch replayed consumed intent", err)
+	}
+	var record state.Execution
+	for _, item := range current.Executions {
+		record = item
+		break
+	}
+	for i := len(current.Executions); i < state.MaxExecutions; i++ {
+		key := sha256.Sum256([]byte(time.Unix(int64(i), 0).String()))
+		current.Executions[hex.EncodeToString(key[:])] = record
+	}
+	p.id = "new-work-at-capacity"
+	if err := engine.reconcile(context.Background(), &current); err == nil || p.executions != 2 || len(current.Executions) != state.MaxExecutions {
+		t.Fatal("full journal dispatched or evicted history")
+	}
+}

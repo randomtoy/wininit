@@ -44,7 +44,8 @@ guests. It also does not test the Windows Server 2022 target.
 NoCloud accepts `instance-id` and optional `local-hostname`; ConfigDrive accepts
 `uuid` and optional `hostname`, with explicit FQDN-to-first-label normalization.
 Supported ConfigDrive versions and exclusions are listed in
-[Built-in plugins](plugins.md). User-data is not opened or executed. Hostname mutation
+[Built-in plugins](plugins.md). Datasources do not open user-data; the separate
+PowerShell provisioner requires its own explicit approval. Hostname mutation
 accepts only the documented 1–15 character ASCII label and refuses a
 domain-joined host.
 

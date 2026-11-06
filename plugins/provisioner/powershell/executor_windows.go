@@ -27,7 +27,8 @@ func (NativeExecutor) Run(parent context.Context, script []byte, limit uint32) (
 	}
 	// Refuse accidental direct execution outside the reviewed host job/role.
 	var job windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION
-	if err := windows.QueryInformationJobObject(0, windows.JobObjectExtendedLimitInformation, uintptr(unsafe.Pointer(&job)), uint32(unsafe.Sizeof(job)), nil); err != nil || job.BasicLimitInformation.ActiveProcessLimit != 8 || job.JobMemoryLimit != 512<<20 || job.BasicLimitInformation.LimitFlags&windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE == 0 {
+	requiredLimits := uint32(windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | windows.JOB_OBJECT_LIMIT_ACTIVE_PROCESS | windows.JOB_OBJECT_LIMIT_PROCESS_MEMORY | windows.JOB_OBJECT_LIMIT_JOB_MEMORY)
+	if err := windows.QueryInformationJobObject(0, windows.JobObjectExtendedLimitInformation, uintptr(unsafe.Pointer(&job)), uint32(unsafe.Sizeof(job)), nil); err != nil || job.BasicLimitInformation.ActiveProcessLimit != 8 || job.JobMemoryLimit != 512<<20 || job.ProcessMemoryLimit != 512<<20 || job.BasicLimitInformation.LimitFlags&requiredLimits != requiredLimits {
 		return nil, userdatav1.ErrUnavailableRuntime
 	}
 	var size uint32

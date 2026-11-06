@@ -3,14 +3,24 @@
 package pluginprocess
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"github.com/randomtoy/wininit/internal/lifecycle"
 	"github.com/randomtoy/wininit/internal/plugin"
+	"github.com/randomtoy/wininit/internal/state"
+	"github.com/randomtoy/wininit/plugins/datasource/configdrive"
+	"github.com/randomtoy/wininit/plugins/datasource/nocloud"
+	"golang.org/x/sys/windows/registry"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestWindowsActualPowerShellExecution(t *testing.T) {
@@ -53,6 +63,127 @@ func TestWindowsActualPowerShellExecution(t *testing.T) {
 			}
 			if err != nil || !result.HasExitCode || result.ExitCode != test.exit || result.RebootRequired != (test.exit == 3010) {
 				t.Fatalf("native execution result=%#v error=%v", result, err)
+			}
+		})
+	}
+}
+
+// terminalStore cancels only after a terminal aggregate has reached the real
+// Registry store. It lets the real long-running engine finish without polling.
+type terminalStore struct {
+	*state.RegistryStore
+	stop  context.CancelFunc
+	armed bool
+}
+
+func (s *terminalStore) Save(ctx context.Context, value state.State) error {
+	if err := s.RegistryStore.Save(ctx, value); err != nil {
+		return err
+	}
+	if value.Provisioning == "pending" || value.Provisioning == "running" {
+		s.armed = true
+	}
+	if s.armed && (value.Provisioning == "completed" || value.Provisioning == "failed" || value.Provisioning == "reboot_required") {
+		s.stop()
+	}
+	return nil
+}
+
+func TestWindowsPowerShellRegistryJournalAndSelectedSources(t *testing.T) {
+	for _, source := range []string{"nocloud", "configdrive"} {
+		t.Run(source, func(t *testing.T) {
+			seed := t.TempDir()
+			marker := filepath.Join(seed, "executions.txt")
+			scriptPath := filepath.Join(seed, "user-data")
+			metadataPath := filepath.Join(seed, "meta-data")
+			var ds plugin.Datasource = nocloud.New(seed, false, nil)
+			metadata := []byte("instance-id: journal-instance\n")
+			if source == "configdrive" {
+				version := filepath.Join(seed, "openstack", "latest")
+				if err := os.MkdirAll(version, 0700); err != nil {
+					t.Fatal(err)
+				}
+				scriptPath = filepath.Join(version, "user_data")
+				metadataPath = filepath.Join(version, "meta_data.json")
+				metadata = []byte(`{"uuid":"journal-instance"}`)
+				ds = configdrive.New(seed, false, nil)
+			}
+			if err := os.WriteFile(metadataPath, metadata, 0600); err != nil {
+				t.Fatal(err)
+			}
+			script := []byte("#ps1\n[IO.File]::AppendAllText('" + marker + "','x'); [Console]::Write('private-payload-output'); exit 0\n")
+			if err := os.WriteFile(scriptPath, script, 0600); err != nil {
+				t.Fatal(err)
+			}
+			prepareTestPath(t, seed)
+			settings := psSettings(t, "powershell")
+			sum := sha256.Sum256(script)
+			settings.ScriptSHA256 = hex.EncodeToString(sum[:])
+			registryPath := fmt.Sprintf(`SOFTWARE\WininitTests\powershell-%d`, time.Now().UnixNano())
+			t.Cleanup(func() {
+				_ = registry.DeleteKey(registry.LOCAL_MACHINE, registryPath+`\BootSession`)
+				_ = registry.DeleteKey(registry.LOCAL_MACHINE, registryPath)
+			})
+			var logs bytes.Buffer
+			run := func() (state.State, error) {
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				store := &terminalStore{RegistryStore: state.NewRegistryStore(registryPath), stop: cancel}
+				p := NewPowerShell(settings, map[string]SourceSettings{source: {Directory: seed}})
+				engine := lifecycle.NewWithPlugins(store, slog.New(slog.NewJSONHandler(&logs, nil)), plugin.Catalog{Datasources: []plugin.DatasourceRegistration{{Enabled: true, Plugin: ds}}, Provisioners: []plugin.ProvisionerRegistration{{Enabled: true, Plugin: p}}}, "native-test-config")
+				err := engine.Run(ctx)
+				saved, loadErr := store.Load(context.Background())
+				if loadErr != nil {
+					t.Fatal(loadErr)
+				}
+				return saved, err
+			}
+			saved, err := run()
+			if err != nil || saved.Provisioning != "completed" || len(saved.Executions) != 1 {
+				t.Fatalf("initial run=%#v error=%v", saved, err)
+			}
+			if err := os.Remove(scriptPath); err != nil {
+				t.Fatal(err)
+			}
+			// Reuse must not inspect the now absent approved payload.
+			saved, err = run()
+			data, readErr := os.ReadFile(marker)
+			if err != nil || readErr != nil || string(data) != "x" || !saved.Plugins["powershell_user_data"].Reused {
+				t.Fatalf("replay or lost evidence: %#v %v %v", saved, err, readErr)
+			}
+			failing := []byte("#ps1\n[IO.File]::AppendAllText('" + marker + "','f'); throw 'private-payload-output'\n")
+			if err := os.WriteFile(scriptPath, failing, 0600); err != nil {
+				t.Fatal(err)
+			}
+			settings.ExecutionID = "explicit-failure"
+			sum = sha256.Sum256(failing)
+			settings.ScriptSHA256 = hex.EncodeToString(sum[:])
+			if _, err := run(); err == nil {
+				t.Fatal("terminating failure reported success")
+			}
+			if _, err := run(); err == nil {
+				t.Fatal("failed consumed ID retried")
+			}
+			data, _ = os.ReadFile(marker)
+			if string(data) != "xf" {
+				t.Fatal("failed script was executed more than once")
+			}
+			reboot := []byte("#ps1\nexit 3010\n")
+			if err := os.WriteFile(scriptPath, reboot, 0600); err != nil {
+				t.Fatal(err)
+			}
+			settings.ExecutionID = "request-only"
+			sum = sha256.Sum256(reboot)
+			settings.ScriptSHA256 = hex.EncodeToString(sum[:])
+			for i := 0; i < 2; i++ {
+				saved, err = run()
+				if err != nil || saved.Provisioning != "reboot_required" {
+					t.Fatalf("service restart satisfied reboot: %#v %v", saved, err)
+				}
+			}
+			encoded, _ := json.Marshal(saved)
+			if strings.Contains(logs.String(), "private-payload-output") || bytes.Contains(encoded, []byte("private-payload-output")) {
+				t.Fatal("payload/output escaped into state or logs")
 			}
 		})
 	}
