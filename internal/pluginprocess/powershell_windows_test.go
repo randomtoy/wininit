@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/randomtoy/wininit/internal/lifecycle"
+	"github.com/randomtoy/wininit/internal/platform/securefile"
 	"github.com/randomtoy/wininit/internal/plugin"
 	"github.com/randomtoy/wininit/internal/state"
 	"github.com/randomtoy/wininit/plugins/datasource/configdrive"
@@ -187,4 +188,12 @@ func TestWindowsPowerShellRegistryJournalAndSelectedSources(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestWindowsPowerShellInterpreterImageBoundary(t *testing.T) {
+	image, err := securefile.TrustedSystemPowerShell()
+	if err != nil {
+		t.Fatalf("native OS PowerShell image verification: %v", err)
+	}
+	defer image.Close()
 }
