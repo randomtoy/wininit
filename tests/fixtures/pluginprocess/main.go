@@ -72,6 +72,11 @@ func (p *fixturePlugin) GRPCServer(_ *goplugin.GRPCBroker, server *grpc.Server) 
 }
 func main() {
 	mode := strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe")
+	if mode == "bootstrap" {
+		fmt.Println("ready")
+		time.Sleep(time.Hour)
+		return
+	}
 	if mode == "nohandshake" {
 		fmt.Println("fixture-private-secret")
 		time.Sleep(time.Hour)

@@ -121,6 +121,12 @@ func (p *ConfigDrive) Discover(parent context.Context) (plugin.Metadata, error) 
 			return plugin.Metadata{}, process.startFailure
 		}
 		if process != nil {
+			// stdout can close just before os/exec publishes the exit status.
+			// Wait briefly for the numeric code, never for raw child output.
+			select {
+			case <-process.finished:
+			case <-time.After(100 * time.Millisecond):
+			}
 			if status := process.exitStatus.Load(); status != 0 {
 				return plugin.Metadata{}, fmt.Errorf("external ConfigDrive exited before protocol handshake (exit code 0x%x)", uint32(status))
 			}

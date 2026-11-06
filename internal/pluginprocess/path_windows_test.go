@@ -5,9 +5,12 @@ package pluginprocess
 import (
 	"context"
 	"golang.org/x/sys/windows"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func prepareTestPath(t *testing.T, root string) {
@@ -27,6 +30,35 @@ func prepareTestPath(t *testing.T, root string) {
 	})
 	if err != nil {
 		t.Fatalf("prepare protected readable test path: %v", err)
+	}
+}
+
+func TestWindowsRestrictedProcessBootstrap(t *testing.T) {
+	settings := processSettings(t, "bootstrap")
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, settings.Executable)
+	cmd.Env = environment()
+	process, err := newProcessRunner(cmd, "")
+	if err != nil {
+		t.Fatal(processError("bootstrap preparation", err))
+	}
+	if err := process.Start(ctx); err != nil {
+		t.Fatal(processError("bootstrap start", err))
+	}
+	done := make(chan error, 1)
+	go func() { done <- process.Wait(context.Background()) }()
+	defer func() { process.Kill(context.Background()); <-done }()
+	buffer := make([]byte, 6)
+	if _, err := io.ReadFull(process.Stdout(), buffer); err != nil {
+		select {
+		case <-process.finished:
+		case <-time.After(200 * time.Millisecond):
+		}
+		t.Fatalf("restricted runtime did not reach main (exit code 0x%x)", uint32(process.exitStatus.Load()))
+	}
+	if string(buffer) != "ready\n" {
+		t.Fatal("restricted process bootstrap returned unexpected bytes")
 	}
 }
 

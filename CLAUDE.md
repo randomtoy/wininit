@@ -248,6 +248,8 @@ an actual run of that procedure.
   pinned directory handles, no reparse traversal, no hard links, and atomic
   flushed replacements. Preserve unmanaged bytes; empty key lists revoke only
   the managed block. Do not install/configure sshd or use shared admin key files.
+- CreateProfile uses a MAX_PATH-sized output buffer; its RPC size constraint
+  is narrower than ordinary Windows long-path filesystem support.
 - External ConfigDrive requires explicit mode/enablement, absolute reviewed
   image, SHA-256 pin, trusted image/parent ACLs, locked verified image,
   matching handshake/identity, local mTLS, bounded messages, deadlines across

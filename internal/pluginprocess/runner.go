@@ -26,6 +26,7 @@ type processRunner struct {
 	once           sync.Once
 	startFailure   error
 	exitStatus     atomic.Uint64
+	finished       chan struct{}
 }
 
 func newProcessRunner(cmd *exec.Cmd, directory string) (*processRunner, error) {
@@ -33,7 +34,7 @@ func newProcessRunner(cmd *exec.Cmd, directory string) (*processRunner, error) {
 	if err != nil {
 		return nil, err
 	}
-	r := &processRunner{cmd: cmd, control: control, directory: directory}
+	r := &processRunner{cmd: cmd, control: control, directory: directory, finished: make(chan struct{})}
 	r.stdout, err = cmd.StdoutPipe()
 	if err != nil {
 		control.close()
@@ -90,6 +91,7 @@ func processError(operation string, cause error) error {
 func (r *processRunner) close() { r.once.Do(func() { r.control.close() }) }
 func (r *processRunner) Wait(context.Context) error {
 	defer r.close()
+	defer close(r.finished)
 	err := r.cmd.Wait()
 	if r.cmd.ProcessState != nil {
 		r.exitStatus.Store(1<<32 | uint64(uint32(r.cmd.ProcessState.ExitCode())))

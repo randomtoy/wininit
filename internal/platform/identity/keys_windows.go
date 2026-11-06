@@ -36,7 +36,9 @@ func profilePath(ctx context.Context, user, sid string) (string, error) {
 	}
 	encodedSID, _ := windows.UTF16PtrFromString(sid)
 	encodedUser, _ := windows.UTF16PtrFromString(user)
-	buffer := make([]uint16, 32768)
+	// CreateProfile's RPC contract is bounded to MAX_PATH, even on systems
+	// supporting longer ordinary filesystem paths.
+	buffer := make([]uint16, windows.MAX_PATH)
 	result, _, _ := createProfile.Call(uintptr(unsafe.Pointer(encodedSID)), uintptr(unsafe.Pointer(encodedUser)), uintptr(unsafe.Pointer(&buffer[0])), uintptr(len(buffer)))
 	if result != 0 && uint32(result) != 0x800700b7 {
 		return "", fmt.Errorf("create local user profile failed (HRESULT 0x%x)", uint32(result))
