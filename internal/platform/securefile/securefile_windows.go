@@ -5,6 +5,7 @@ package securefile
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,14 +26,20 @@ func OpenRelative(parent windows.Handle, name string, access, disposition, optio
 	oa.Length = uint32(unsafe.Sizeof(oa))
 	var handle windows.Handle
 	var iosb windows.IO_STATUS_BLOCK
-	err = windows.NtCreateFile(&handle, access|windows.SYNCHRONIZE, &oa, &iosb, nil, windows.FILE_ATTRIBUTE_NORMAL,
+	// Every handle is inspected before use. FILE_READ_ATTRIBUTES is required
+	// even when the caller only requested directory traversal or file writes.
+	err = windows.NtCreateFile(&handle, access|windows.SYNCHRONIZE|windows.FILE_READ_ATTRIBUTES, &oa, &iosb, nil, windows.FILE_ATTRIBUTE_NORMAL,
 		windows.FILE_SHARE_READ, disposition, options|windows.FILE_SYNCHRONOUS_IO_NONALERT|windows.FILE_OPEN_REPARSE_POINT, 0, 0)
 	if err != nil {
 		return nil, err
 	}
 	file := os.NewFile(uintptr(handle), name)
 	var info windows.ByHandleFileInformation
-	if err := windows.GetFileInformationByHandle(handle, &info); err != nil || info.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+	if err := windows.GetFileInformationByHandle(handle, &info); err != nil {
+		file.Close()
+		return nil, fmt.Errorf("inspect opened file attributes: %w", err)
+	}
+	if info.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 {
 		file.Close()
 		return nil, errors.New("reparse points are not permitted")
 	}
@@ -102,7 +109,7 @@ func trusted(sid *windows.SID) bool {
 func TrustedFile(path string, secret bool) (*os.File, error) {
 	parent, err := OpenLocal(filepath.Dir(path), windows.READ_CONTROL|windows.FILE_LIST_DIRECTORY, windows.FILE_DIRECTORY_FILE)
 	if err != nil {
-		return nil, errors.New("open protected parent directory failed")
+		return nil, fmt.Errorf("open protected parent directory: %w", err)
 	}
 	defer parent.Close()
 	if err := TrustedACL(parent, false); err != nil {
@@ -110,7 +117,7 @@ func TrustedFile(path string, secret bool) (*os.File, error) {
 	}
 	file, err := OpenRelative(windows.Handle(parent.Fd()), filepath.Base(path), windows.GENERIC_READ|windows.READ_CONTROL, windows.FILE_OPEN, windows.FILE_NON_DIRECTORY_FILE, nil)
 	if err != nil {
-		return nil, errors.New("open protected file failed")
+		return nil, fmt.Errorf("open protected file: %w", err)
 	}
 	if err := TrustedACL(file, secret); err != nil {
 		file.Close()

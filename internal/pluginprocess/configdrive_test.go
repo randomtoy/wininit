@@ -59,6 +59,11 @@ func processSettings(t *testing.T, mode string) Settings {
 		t.Fatal(err)
 	}
 	prepareTestPath(t, directory)
+	verified, err := openExecutable(path)
+	if err != nil {
+		t.Fatalf("prepared test executable rejected: %v", err)
+	}
+	verified.Close()
 	digest := sha256.Sum256(data)
 	return Settings{Executable: path, SHA256: hex.EncodeToString(digest[:]), TimeoutSeconds: 15}
 }

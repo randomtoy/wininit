@@ -235,6 +235,9 @@ an actual run of that procedure.
 - Password files and parent directories require SYSTEM/Administrators ownership
   and protected access. Reject network drives, streams, hard links, and reparse
   traversal. Password files must stay outside log.directory.
+- Native file helpers must request FILE_READ_ATTRIBUTES before validating a
+  handle, including traversal-only directories and write-only replacements.
+  Keep syscall causes without echoing untrusted paths or payloads.
 - Password policy is machine-wide, bounded, and independently opt-in. Preserve
   force-logoff/complexity settings. Native integration tests restore exact raw
   prior policy even on failure; run them only on a disposable elevated host.
