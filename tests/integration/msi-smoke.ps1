@@ -201,13 +201,13 @@ try {
         throw "Status reported provisioning '$($status.provisioning)', expected 'disabled'."
     }
     $plugins = @($status.plugins)
-    if ($plugins.Count -ne 6) {
-        throw "Status reported $($plugins.Count) plugins, expected six independently disabled plugins."
+    if ($plugins.Count -ne 7) {
+        throw "Status reported $($plugins.Count) plugins, expected seven independently disabled plugins."
     }
     $noCloud = @($plugins | Where-Object { $_.name -eq 'nocloud' -and $_.kind -eq 'datasource' })
     $hostname = @($plugins | Where-Object { $_.name -eq 'hostname' -and $_.kind -eq 'provisioner' })
     $configDrive = @($plugins | Where-Object { $_.name -eq 'configdrive' -and $_.kind -eq 'datasource' })
-    foreach ($name in @('password_policy', 'local_users', 'authorized_keys')) {
+    foreach ($name in @('password_policy', 'local_users', 'authorized_keys', 'powershell_user_data')) {
         $entry = @($plugins | Where-Object { $_.name -eq $name -and $_.kind -eq 'provisioner' })
         if ($entry.Count -ne 1 -or $entry[0].enabled -ne $false -or $entry[0].status -ne 'disabled') {
             throw "Identity plugin '$name' was not reported exactly once as disabled."

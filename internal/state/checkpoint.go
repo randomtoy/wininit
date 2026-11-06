@@ -48,6 +48,11 @@ func decodeCheckpoint(data []byte) (State, error) {
 		value.Provisioning = "disabled"
 		value.ConfigurationHash = ""
 		value.Plugins = nil
+		value.Executions = nil
+	}
+	if value.SchemaVersion == 2 {
+		value.SchemaVersion = CurrentSchemaVersion
+		value.Executions = nil
 	}
 	if err := value.Validate(); err != nil {
 		return State{}, err

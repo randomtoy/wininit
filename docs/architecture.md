@@ -5,8 +5,9 @@
 The agent provides a Windows Service/CLI process, configuration, lifecycle
 state, diagnostics, and an internal opt-in plugin pipeline. The current pipeline
 contains NoCloud/ConfigDrive datasources and hostname, password policy, local
-user, and authorized-key provisioners. ConfigDrive may explicitly run in a
-separate process using the experimental datasource v1 SDK.
+user, authorized-key, and PowerShell user-data provisioners. ConfigDrive may
+explicitly run in a separate process using the experimental datasource v1 SDK.
+PowerShell runs only in a separate EXE using the experimental userdata v1 SDK.
 
 ## Component view
 
@@ -26,6 +27,7 @@ Windows SCM / command-line user
    +-- hostname
    +-- password_policy / local_users / authorized_keys
    +-- ConfigDrive process adapter -- mTLS/gRPC -- separate ConfigDrive EXE
+   +-- one-shot journal + PowerShell adapter -- mTLS/gRPC -- PowerShell EXE
 ```
 
 Internal interfaces remain private to lifecycle composition. The experimental
@@ -90,16 +92,32 @@ unavailable sources permit fallback. Malformed input never triggers fallback.
 If enabled, the hostname provisioner consumes that
 model, validates the target, compares the active computer name, and either does
 nothing idempotently, refuses the mutation, or requests the Windows rename.
-This reconciliation runs once per process start. A failure is retried only on a
+Declarative reconciliation runs once per process start. Its failure is retried only on a
 later service/process start; the lifecycle engine does not automatically retry
 or poll.
 
 Enabled provisioners run in password-policy, local-user, SSH-key, hostname
-order. Identity inputs are administrator-owned configuration, not metadata.
+and PowerShell order. Identity inputs are administrator-owned configuration, not metadata.
 Adapters perform native Windows calls and protected handle-relative file
 updates. A mutation is preceded by a durable running checkpoint. Input hashes
 include the configuration fingerprint as well as instance/metadata identity.
 See [identity](identity.md) and [external process lifecycle](external-plugins.md).
+
+## PowerShell process and execution journal
+
+The host adapter does not import the PowerShell executor package. After unique
+datasource selection it prepares a bounded, hash-approved script snapshot in
+the separate plugin. The host flushes a `started` journal entry before calling
+Execute. Only hashes, boot identity, timestamps, exit/failure codes and output
+byte counts are stored. Terminal successes are reused; every consumed failure
+or unknown outcome requires a new execution ID. History survives instance
+changes and is never automatically evicted (128 entries maximum).
+
+A protected volatile Registry boot marker distinguishes a process restart from
+a kernel boot for exit 3010. It is separate from durable checkpoint slots. A
+corrupt or incompletely initialized marker fails closed. Do not delete it to
+simulate a reboot in production. See [PowerShell policy](powershell-user-data.md)
+and [ADR 0013](adr/0013-powershell-user-data.md).
 
 ## Configuration
 
@@ -114,11 +132,11 @@ See [Configuration](configuration.md).
 ## Persistent state
 
 The production `StateStore` is backed by the Windows Registry. State schema
-version 2 includes lifecycle phase, instance identifier, plugin runtime state,
+version 3 includes a one-shot execution journal plus lifecycle phase, instance identifier, plugin runtime state,
 attempt/reboot counters, restart/checkpoint information, timestamps, and
 sanitized error metadata. It never includes passwords, tokens, private keys, or
-raw metadata/user-data. A valid schema version 1 checkpoint is migrated to
-schema version 2 without interpreting absent plugin state as success or
+raw metadata/user-data. Valid schema version 1/2 checkpoints are migrated to
+schema version 3 without interpreting absent plugin state as success or
 enablement.
 
 Registry updates do not have database-style transactions. A save therefore

@@ -63,8 +63,14 @@ Server 2025. Windows Server 2022 and the full media/reboot matrix remain pending
 
 ## 5. PowerShell user-data
 
-Add bounded PowerShell execution with explicit policy, durable results, output
-redaction, and restart/reboot semantics.
+Implementation status: a separate disabled-by-default PowerShell EXE supports
+selected NoCloud/ConfigDrive UTF-8 #ps1/#ps1_sysnative input, script/image SHA-256
+pins, explicit privileged approval, bounded time/output/process trees, and a
+durable one-shot journal. Failed/unknown executions require a new execution ID;
+exit 3010 requests a reboot without restarting Windows. See
+[PowerShell user-data](powershell-user-data.md) and ADR 0013.
+
+Actual reboot/resume and Windows Server 2022 remain pending.
 
 Exit criteria: threat model and administrative controls are documented and
 malicious-input tests cover command, path, and output boundaries.
@@ -84,6 +90,7 @@ ConfigDrive remains the default for existing v1 files. See
 Exit criteria: compatibility policy, checksum/identity verification,
 least-privilege execution, deadlines, cancellation, process cleanup, and secret
 redaction are enforced and tested.
+The separate PowerShell provisioner has its own narrow experimental SDK.
 General external provisioners, stable SDK promises, plugin registries, and
 hostile-code isolation remain future work.
 

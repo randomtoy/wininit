@@ -14,6 +14,10 @@ import (
 // group. Production Windows credential restrictions are tested natively.
 type processControl struct{}
 
+func prepareProcessProfile(ctx context.Context, cmd *exec.Cmd, _ bool) (*processControl, error) {
+	return prepareProcess(ctx, cmd)
+}
+
 func prepareProcess(_ context.Context, cmd *exec.Cmd) (*processControl, error) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	return &processControl{}, nil

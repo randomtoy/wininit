@@ -42,6 +42,9 @@ try {
     $pluginOutput = Join-Path $DistDirectory 'wininit-plugin-configdrive-windows-amd64.exe'
     & go build -trimpath -buildvcs=true -ldflags $ldflags -o $pluginOutput ./cmd/wininit-plugin-configdrive
     if ($LASTEXITCODE -ne 0) { throw "ConfigDrive plugin build failed with exit code $LASTEXITCODE" }
+    $powerShellOutput = Join-Path $DistDirectory 'wininit-plugin-powershell-windows-amd64.exe'
+    & go build -trimpath -buildvcs=true -ldflags $ldflags -o $powerShellOutput ./cmd/wininit-plugin-powershell
+    if ($LASTEXITCODE -ne 0) { throw "PowerShell plugin build failed with exit code $LASTEXITCODE" }
 }
 finally {
     $env:GOOS = $previousGOOS

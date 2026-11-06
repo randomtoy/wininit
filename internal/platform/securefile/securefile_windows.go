@@ -104,12 +104,15 @@ func ordinaryComponent(name string) bool {
 // TrustedACL requires an administrator/SYSTEM owner and a non-null DACL.
 // Executables may be readable by users; secrets may not be readable by others.
 func TrustedACL(file *os.File, secret bool) error {
+	return trustedACL(file, secret, false)
+}
+func trustedACL(file *os.File, secret, system bool) error {
 	sd, err := windows.GetSecurityInfo(windows.Handle(file.Fd()), windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
 	if err != nil {
 		return errors.New("cannot inspect protected file security")
 	}
 	owner, _, err := sd.Owner()
-	if err != nil || !trusted(owner) {
+	if err != nil || !trustedFor(owner, system) {
 		return errors.New("protected file must be owned by SYSTEM or Administrators")
 	}
 	dacl, _, err := sd.DACL()
@@ -138,7 +141,7 @@ func TrustedACL(file *os.File, secret bool) error {
 			return errors.New("unsupported protected file access entry")
 		}
 		sid := (*windows.SID)(unsafe.Pointer(&ace.SidStart))
-		if uint32(ace.Mask)&dangerous != 0 && !trusted(sid) {
+		if uint32(ace.Mask)&dangerous != 0 && !trustedFor(sid, system) {
 			return errors.New("protected file permits access by an untrusted principal")
 		}
 	}
@@ -147,6 +150,11 @@ func TrustedACL(file *os.File, secret bool) error {
 
 func trusted(sid *windows.SID) bool {
 	return sid != nil && (sid.IsWellKnown(windows.WinLocalSystemSid) || sid.IsWellKnown(windows.WinBuiltinAdministratorsSid))
+}
+func trustedFor(sid *windows.SID, system bool) bool {
+	// Windows servicing owns System32 images/directories and may hard-link
+	// them into WinSxS. This exception is never used for configured plugins.
+	return trusted(sid) || system && sid != nil && sid.String() == "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"
 }
 
 func TrustedFile(path string, secret bool) (*os.File, error) {
@@ -162,19 +170,22 @@ func TrustedFile(path string, secret bool) (*os.File, error) {
 }
 
 func trustedFileAt(parent *os.File, name string, secret bool) (*os.File, error) {
-	if err := TrustedACL(parent, false); err != nil {
+	return trustedFileAtMode(parent, name, secret, false)
+}
+func trustedFileAtMode(parent *os.File, name string, secret, system bool) (*os.File, error) {
+	if err := trustedACL(parent, false, system); err != nil {
 		return nil, err
 	}
 	file, err := OpenRelative(windows.Handle(parent.Fd()), name, windows.GENERIC_READ|windows.READ_CONTROL, windows.FILE_OPEN, windows.FILE_NON_DIRECTORY_FILE, nil)
 	if err != nil {
 		return nil, fmt.Errorf("open protected file: %w", err)
 	}
-	if err := TrustedACL(file, secret); err != nil {
+	if err := trustedACL(file, secret, system); err != nil {
 		file.Close()
 		return nil, err
 	}
 	var info windows.ByHandleFileInformation
-	if err := windows.GetFileInformationByHandle(windows.Handle(file.Fd()), &info); err != nil || info.NumberOfLinks != 1 {
+	if err := windows.GetFileInformationByHandle(windows.Handle(file.Fd()), &info); err != nil || info.NumberOfLinks == 0 || !system && info.NumberOfLinks != 1 {
 		file.Close()
 		return nil, errors.New("protected files must have exactly one hard link")
 	}
@@ -201,6 +212,20 @@ func (file *PinnedFile) Close() error {
 }
 
 func TrustedExecutable(path string) (_ *PinnedFile, err error) {
+	return pinnedExecutable(path, false)
+}
+
+// TrustedSystemPowerShell opens only the native OS PowerShell image, allowing
+// Windows servicing ownership/hard links while preserving path and ACL pins.
+func TrustedSystemPowerShell() (*PinnedFile, error) {
+	directory, err := windows.GetSystemDirectory()
+	if err != nil {
+		return nil, err
+	}
+	return pinnedExecutable(filepath.Join(directory, "WindowsPowerShell", "v1.0", "powershell.exe"), true)
+}
+
+func pinnedExecutable(path string, system bool) (_ *PinnedFile, err error) {
 	if err := checkLocalPath(path); err != nil {
 		return nil, err
 	}
@@ -228,7 +253,7 @@ func TrustedExecutable(path string) (_ *PinnedFile, err error) {
 		}
 		parents = append(parents, parent)
 	}
-	image, err := trustedFileAt(parent, parts[len(parts)-1], false)
+	image, err := trustedFileAtMode(parent, parts[len(parts)-1], false, system)
 	if err != nil {
 		return nil, err
 	}

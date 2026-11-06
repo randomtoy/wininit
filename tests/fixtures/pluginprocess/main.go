@@ -74,6 +74,10 @@ func (p *fixturePlugin) GRPCServer(_ *goplugin.GRPCBroker, server *grpc.Server) 
 }
 func main() {
 	mode := strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe")
+	if strings.HasPrefix(mode, "ps-") {
+		servePowerShellFixture(mode)
+		return
+	}
 	if mode == "bootstrap" {
 		fmt.Println("ready")
 		time.Sleep(time.Hour)

@@ -7,7 +7,7 @@ provisioners. Implementations are compiled packages by default. ConfigDrive
 can explicitly select a separate verified EXE using the experimental v1
 protobuf/gRPC SDK; see [external plugins](external-plugins.md).
 
-Every plugin is independently opt-in. All six logical plugins are disabled by default,
+Every plugin is independently opt-in. All seven logical plugins are disabled by default,
 including for configuration files created before these fields existed. The
 pipeline executes enabled plugins only. Disabling a plugin in the current
 configuration takes priority over any pending plugin or reboot checkpoint in
@@ -225,6 +225,14 @@ discovery, so an absent, malformed, or conflicting source cannot make an old
 provisioner result appear current. Attempt counters retain their history until
 a different instance is selected.
 
+## PowerShell user-data provisioner
+
+`powershell_user_data` runs after hostname, only in a separate reviewed EXE. It
+is independently disabled by default and requires explicit privileged consent,
+script/image SHA-256 pins, and an execution ID. Datasources still read metadata
+only. See [PowerShell user-data](powershell-user-data.md) for selected-source
+reading, accepted envelopes, journal/retry semantics, and numeric-only results.
+
 ## Hostname provisioner
 
 The independently gated `password_policy`, `local_users`, and
@@ -251,7 +259,7 @@ name is case-insensitive, so an already-active name is an idempotent no-op.
 `reboot.policy` remains `never`. `wininit` does not automatically restart the
 guest.
 
-When Windows accepts a rename but requires restart, state schema version 2
+When Windows accepts a rename but requires restart, state schema version 3
 records a durable `reboot_required` checkpoint and status reports the pending
 condition. An administrator restarts Windows through their normal change
 process. The agent does not perform or claim that restart.
@@ -314,4 +322,5 @@ as the datasource type. They must not include raw metadata files or user-data.
 The optional [external ConfigDrive](external-plugins.md) is the first
 experimental executable plugin. It stays in this repository as a separate
 EXE and versioned SDK surface. Broader third-party plugins, external
-provisioners, registries/downloads, and a stable general SDK remain deferred.
+general provisioners, registries/downloads, and a stable general SDK remain deferred.
+PowerShell is a narrow separate-process exception; see ADR 0013.

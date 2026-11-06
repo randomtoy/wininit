@@ -107,7 +107,7 @@ func metadataPath(root *os.Root) (string, error) {
 	if err != nil || !info.IsDir() {
 		return "", errors.New("ConfigDrive openstack must be a readable directory, not a symlink")
 	}
-	for _, version := range []string{"2025-04-04", "2020-10-14", "2018-08-27", "2017-02-22", "2016-10-06", "2016-06-30", "2015-10-15", "2013-10-17", "2013-04-04", "2012-08-10", "latest"} {
+	for _, version := range SupportedVersions() {
 		path := filepath.Join("openstack", version)
 		info, err := root.Lstat(path)
 		if os.IsNotExist(err) {
@@ -119,4 +119,10 @@ func metadataPath(root *os.Root) (string, error) {
 		return filepath.Join(path, "meta_data.json"), nil
 	}
 	return "", plugin.ErrUnavailable
+}
+
+// SupportedVersions returns a fresh ordered list shared with the opt-in
+// user-data reader. Datasource discovery itself still never opens user_data.
+func SupportedVersions() []string {
+	return []string{"2025-04-04", "2020-10-14", "2018-08-27", "2017-02-22", "2016-10-06", "2016-06-30", "2015-10-15", "2013-10-17", "2013-04-04", "2012-08-10", "latest"}
 }

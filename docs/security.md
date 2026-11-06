@@ -24,7 +24,7 @@ explicit verified process; its trusted-code boundary is documented in
 accept administrator-owned settings only, as documented in
 [Identity and access](identity.md) and ADR 0011.
 
-All six logical plugins are independently disabled by default. Current
+All seven logical plugins are independently disabled by default. Current
 configuration disablement overrides pending state so an old checkpoint cannot
 reactivate discovery or mutation.
 
@@ -111,7 +111,8 @@ runs. It does not merge fields from different sources.
 OpenStack FQDN normalization occurs explicitly in ConfigDrive: validate the DNS
 name, take the lowercase first label, and leave Windows length/name validation
 to the provisioner. No suffix is configured and no label is truncated. Do not
-consume `user_data`, `password`, vendor/network data, or injected file paths.
+consume `user_data`, `password`, vendor/network data, or injected file paths
+in the datasource; only the separate enabled PowerShell provisioner reads user-data.
 
 Hostname input is restricted to the documented conservative ASCII label. The
 provisioner refuses domain-joined rename and does not implicitly convert or
@@ -120,9 +121,26 @@ Windows-specific validation.
 `reboot.policy` remains `never`; LocalSystem records a restart checkpoint but
 never restarts the guest. The administrator controls restart timing.
 
-Before PowerShell execution, define explicit enablement, execution policy,
-interpreter path, timeout, output limits, process-tree cleanup, reboot semantics,
-and audit behavior.
+PowerShell is a separate privileged process, independently disabled by default.
+It requires allow_privileged and exact script/EXE SHA-256 pins. It reads only
+the host-selected source after verifying instance/hostname, then snapshots a
+bounded UTF-8 script. A flushed host journal gates execution and prevents
+automatic retries. Script input travels over private stdin, never argv or an
+agent payload spool; combined output is counted and discarded.
+
+The process retains administrative provisioning access, with direct shutdown
+privileges removed, a private desktop, scrubbed environment, deadlines, and a
+kill-on-close job limited to eight processes and 512 MiB total/per-process. It
+is trusted code, not a sandbox: approved SYSTEM code can change services or
+schedule work beyond the job. The agent never reboots; exit 3010 records a
+request and a service restart does not satisfy it. Windows PowerShell 5.1 is
+opened only at the native System32 path. TrustedInstaller ownership/hardlinks
+are allowed only for this OS-serviced interpreter, not configured plugins.
+
+OS auditing, ScriptBlockLogging, AMSI, crash artifacts, and script-created
+files are outside wininit redaction. No security/audit policy is disabled.
+Review approved scripts for secrets and side effects. See
+[PowerShell user-data](powershell-user-data.md) and ADR 0013.
 
 TLS verification and integrity checks must never be disabled merely to accept
 cloud metadata or make tests pass.

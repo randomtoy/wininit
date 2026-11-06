@@ -53,7 +53,7 @@ go test ./plugins/datasource/configdrive -run '^$' -fuzz '^FuzzParse$' -fuzztime
 Datasource tests cover missing, malformed, duplicate, oversized, and symlinked
 metadata; dated-version selection; FQDN normalization; source ambiguity; and
 disabled execution. Windows tests enumerate labels without mounting media or
-changing a hostname. MSI smoke verifies all six logical plugins remain
+changing a hostname. MSI smoke verifies all seven logical plugins remain
 disabled and installed ProgramData/configuration DACLs are protected.
 
 `make build` produces `dist/wininit-windows-amd64.exe` and the separate
@@ -176,3 +176,12 @@ currently pending and unexecuted because no suitable VM is available. Record
 the OS build, hypervisor, source commit, logs, and every acceptance result when
 it is eventually run; do not convert the written procedure itself into a claim
 of successful rename or restart validation.
+
+## Separate PowerShell process
+
+`make build` emits the PowerShell EXE separately. CI runs
+`scripts/check-plugin-boundary.sh` to prevent its executor from entering the
+agent dependency graph. Native Windows tests launch the actual OS interpreter;
+portable tests cover source/envelope validation, RPC redaction and durable
+one-shot recovery. See [operator policy](powershell-user-data.md) and ADR 0013.
+Never reboot a guest unless that specific acceptance run authorizes it.

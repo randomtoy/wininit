@@ -15,7 +15,7 @@ func TestDefaultPluginStatusAndConfigurationFingerprint(t *testing.T) {
 		t.Fatal("default configuration permits provisioning")
 	}
 	descriptors := configuredPlugins(cfg).Descriptors()
-	if len(descriptors) != 6 {
+	if len(descriptors) != 7 {
 		t.Fatalf("descriptors=%#v", descriptors)
 	}
 	for _, descriptor := range descriptors {
@@ -39,7 +39,7 @@ func TestIdentityEnablementOrderAndExternalConstruction(t *testing.T) {
 	if _, ok := catalog.Datasources[1].Plugin.(*pluginprocess.ConfigDrive); !ok {
 		t.Fatal("external ConfigDrive mode retained the built-in implementation")
 	}
-	want := []string{"password_policy", "local_users", "authorized_keys", "hostname"}
+	want := []string{"password_policy", "local_users", "authorized_keys", "hostname", "powershell_user_data"}
 	for index, registration := range catalog.Provisioners {
 		if registration.Plugin.Name() != want[index] || registration.Enabled {
 			t.Fatalf("unsafe provisioner order/gate: %#v", registration)

@@ -1,0 +1,25 @@
+syntax = "proto3";
+package wininit.userdata.v1;
+option go_package = "github.com/randomtoy/wininit/sdk/userdata/v1;userdatav1";
+
+// Experimental, PowerShell-specific provisioner protocol. No script or output
+// bytes travel through the host; execution follows a durable host checkpoint.
+service UserData {
+  rpc Describe(DescribeRequest) returns (Identity);
+  rpc Prepare(PrepareRequest) returns (Prepared);
+  rpc Execute(ExecuteRequest) returns (Execution);
+}
+message DescribeRequest {}
+message Identity { uint32 protocol_version = 1; string name = 2; string kind = 3; }
+message PrepareRequest {
+  string datasource = 1;
+  string seed_directory = 2;
+  bool discover_volumes = 3;
+  string expected_instance_id = 4;
+  string expected_hostname = 5;
+  string approved_sha256 = 6;
+}
+message Prepared { bool unavailable = 1; string lease_id = 2; string sha256 = 3; uint32 size = 4; }
+message ExecuteRequest { string lease_id = 1; uint32 timeout_seconds = 2; uint32 max_output_bytes = 3; }
+enum Outcome { OUTCOME_UNSPECIFIED = 0; SUCCESS = 1; REBOOT_REQUIRED = 2; EXIT_FAILURE = 3; OUTPUT_LIMIT = 4; }
+message Execution { Outcome outcome = 1; uint32 exit_code = 2; uint64 output_bytes = 3; }

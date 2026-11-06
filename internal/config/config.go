@@ -58,10 +58,11 @@ type LocalDatasourceConfig struct {
 }
 
 type ProvisionerConfig struct {
-	Hostname       ToggleConfig         `yaml:"hostname" json:"hostname"`
-	LocalUsers     LocalUsersConfig     `yaml:"local_users" json:"local_users"`
-	PasswordPolicy PasswordPolicyConfig `yaml:"password_policy" json:"password_policy"`
-	AuthorizedKeys AuthorizedKeysConfig `yaml:"authorized_keys" json:"authorized_keys"`
+	Hostname           ToggleConfig                     `yaml:"hostname" json:"hostname"`
+	LocalUsers         LocalUsersConfig                 `yaml:"local_users" json:"local_users"`
+	PasswordPolicy     PasswordPolicyConfig             `yaml:"password_policy" json:"password_policy"`
+	AuthorizedKeys     AuthorizedKeysConfig             `yaml:"authorized_keys" json:"authorized_keys"`
+	PowerShellUserData pluginprocess.PowerShellSettings `yaml:"powershell_user_data" json:"powershell_user_data"`
 }
 
 type LocalUsersConfig struct {
@@ -104,7 +105,7 @@ func Default() Config {
 				NoCloud:     LocalDatasourceConfig{DiscoverVolumes: true},
 				ConfigDrive: ConfigDriveConfig{LocalDatasourceConfig: LocalDatasourceConfig{DiscoverVolumes: true}, Execution: "builtin", Process: pluginprocess.Settings{TimeoutSeconds: 15}},
 			},
-			Provisioners: ProvisionerConfig{PasswordPolicy: PasswordPolicyConfig{PasswordPolicy: identity.DefaultPasswordPolicy()}},
+			Provisioners: ProvisionerConfig{PasswordPolicy: PasswordPolicyConfig{PasswordPolicy: identity.DefaultPasswordPolicy()}, PowerShellUserData: pluginprocess.PowerShellSettings{MaxOutputBytes: 64 << 10, Process: pluginprocess.Settings{TimeoutSeconds: 120}}},
 		},
 		Reboot: RebootConfig{Policy: "never"},
 	}
@@ -236,6 +237,9 @@ func (c Config) Validate() error {
 	if c.Plugins.Provisioners.AuthorizedKeys.Enabled {
 		errs = append(errs, identity.ValidateKeyUsers(c.Plugins.Provisioners.AuthorizedKeys.Users))
 	}
+	if c.Plugins.Provisioners.PowerShellUserData.Enabled {
+		errs = append(errs, c.Plugins.Provisioners.PowerShellUserData.Validate())
+	}
 	return errors.Join(errs...)
 }
 
@@ -244,5 +248,6 @@ func (c Config) Sanitized() Config {
 	safe := c
 	safe.Plugins.Provisioners.LocalUsers.Users = nil
 	safe.Plugins.Provisioners.AuthorizedKeys.Users = nil
+	safe.Plugins.Provisioners.PowerShellUserData.ExecutionID = ""
 	return safe
 }

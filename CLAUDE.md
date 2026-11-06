@@ -9,10 +9,12 @@ configuration, Registry-backed persistent state, diagnostics, Windows
 packaging, and CI.
 
 The current scope includes NoCloud and ConfigDrive datasources plus hostname,
-password_policy, local_users, and authorized_keys provisioners. All six logical
+password_policy, local_users, authorized_keys, and external PowerShell user-data
+provisioners. All seven logical
 plugins are independently opt-in and disabled by default. ConfigDrive can
 explicitly use a separate verified EXE; builtin mode remains the compatible
-default. Do not claim that a VM was provisioned merely because the
+default. PowerShell is a separate EXE only, never installed by the agent MSI.
+Do not claim that a VM was provisioned merely because the
 service started, metadata was found, or a reboot checkpoint was saved.
 
 ## Mandatory maintenance rule
@@ -41,15 +43,18 @@ conventions must update this file in the same change.
   by current configuration. Configuration disablement always wins over old
   persistent checkpoints.
 - The experimental datasource v1 SDK supports reviewed ConfigDrive processes
-  only. Do not imply a stable general protocol, hostile-code sandbox, external
-  provisioner support, or automatic plugin distribution.
+  only. The separate experimental userdata v1 SDK supports the reviewed
+  PowerShell process. Neither is a stable general protocol, hostile-code
+  sandbox, or automatic plugin distribution mechanism.
 
 ## Directory structure
 
 ```text
 cmd/wininit/              executable entry point
-cmd/wininit-plugin-configdrive/ separate process plugin entry point
-sdk/datasource/v1/        experimental protobuf/gRPC process contract
+cmd/wininit-plugin-configdrive/ separate datasource process entry point
+cmd/wininit-plugin-powershell/ separate user-data process entry point
+sdk/datasource/v1/        experimental datasource protobuf/gRPC contract
+sdk/userdata/v1/          experimental prepare/execute protobuf/gRPC contract
 internal/app/             composition and command execution
 internal/config/          versioned configuration and validation
 internal/diagnostics/     sanitized diagnostic archive creation
@@ -92,7 +97,7 @@ Do not create empty directories to imply unimplemented functionality.
 ## Build and test commands
 
 ```text
-make build       build the Windows AMD64 executable
+make build       build the Windows AMD64 agent and separate plugin executables
 make test        run unit tests
 make lint        validate formatting and run static analysis
 make package     build release EXE, MSI, and checksums on Windows
@@ -138,8 +143,8 @@ precondition outside wininit; do not imply the plugin manages groups or sshd.
 
 - Production lifecycle state is stored in the Windows Registry, never SQLite
   or another database.
-- The state schema is versioned. State schema version 2 is current and must
-  migrate a valid version 1 checkpoint without inventing plugin success. Reject
+- The state schema is versioned. State schema version 3 is current and must
+  migrate valid versions 1 and 2 without inventing plugin or script success. Reject
   unknown future schemas rather than guessing their meaning.
 - Detect an unsupported future schema in every checkpoint slot and fail closed,
   including when an older understood slot is marked active. `Load` must not hide
@@ -194,8 +199,9 @@ precondition outside wininit; do not imply the plugin manages groups or sshd.
 - Built-in constructors perform no I/O; all discovery and platform access stays
   behind the execution-time enablement gate.
 - On each process start, rediscover metadata and reconcile every enabled
-  provisioner once. Retry failures only on a later process start; do not add an
-  automatic retry or busy loop.
+  declarative provisioner once. PowerShell is a one-shot exception: a durable
+  execution journal prevents replay across process starts. Do not add automatic
+  retries or a busy loop.
 - Before discovery or saving a new configuration hash, reset every enabled
   provisioner to `pending` and clear its prior input hash/reboot flag. Missing,
   malformed, or ambiguous sources must not expose an earlier result as current.
@@ -218,7 +224,7 @@ precondition outside wininit; do not imply the plugin manages groups or sshd.
 - ConfigDrive explicitly maps a valid DNS hostname/FQDN to its lowercase first
   label; never truncate it to 15 characters. The existing hostname provisioner
   remains responsible for Windows validation. Do not use the display `name`.
-- Never open ConfigDrive `user_data`, `password`, vendor/network metadata, EC2
+- The ConfigDrive datasource must never open `user_data`, `password`, vendor/network metadata, EC2
   layouts, or injected file contents. Do not fetch network metadata.
 - The hostname provisioner accepts only the documented conservative 1–15
   character ASCII label, rejects all-numeric names, refuses domain-joined
@@ -231,8 +237,8 @@ precondition outside wininit; do not imply the plugin manages groups or sshd.
 
 ## Identity and external process constraints
 
-- Run enabled provisioners in policy, local-user, authorized-key, hostname
-  order after unambiguous datasource selection. Stop at the first failure;
+- Run enabled provisioners in policy, local-user, authorized-key, hostname,
+  PowerShell order after unambiguous datasource selection. Stop at the first failure;
   completed mutations are not rolled back.
 - Use native APIs for standard local accounts and SAM policy. Refuse
   domain-joined hosts, built-in, disabled, and administrator accounts. Preserve
@@ -276,7 +282,7 @@ precondition outside wininit; do not imply the plugin manages groups or sshd.
   Pin every path ancestor without delete sharing until process cleanup; locking
   the image alone does not prevent a Win32 launch path from being redirected
   by a directory rename. Test ancestor swaps and release on Windows.
-- Windows children retain caller identity but use deny-only Administrators
+- ConfigDrive Windows children retain caller identity but use deny-only Administrators
   plus ordinary Users/Authenticated Users/Everyone restricting SIDs for a second
   ACL access check, disabled privileges, low
   integrity, and a suspended start before assignment to a kill-on-close job
@@ -306,8 +312,10 @@ precondition outside wininit; do not imply the plugin manages groups or sshd.
   Outbound networking and filesystem reads are not completely OS-isolated.
   Do not claim otherwise or enable arbitrary unreviewed code. Protocol endpoints
   are local; the reviewed ConfigDrive implementation makes no network requests.
-- Discard child stdout/stderr and remote error payloads. No secret file paths,
-  key lists, Registry handles, or provisioning requests go to the child.
+- Discard plugin stdout/stderr and remote error payloads. No password paths,
+  key lists or Registry handles go to a child. The PowerShell protocol carries
+  source selection, expected metadata, hashes, lease IDs, budgets, and numeric
+  outcomes, never script or output bytes.
 - Keep the first plugin/experimental SDK in this repo with separate EXE and
   checksum artifacts. Builtin ConfigDrive remains for old v1 files; external
   failure must never fall back to it. plugins.directory is not scanned.
@@ -316,9 +324,25 @@ precondition outside wininit; do not imply the plugin manages groups or sshd.
 
 - Treat metadata, user-data, configuration, plugin output, filenames, archive
   entries, and Registry contents as untrusted.
-- Never open, parse, archive, or execute NoCloud `user-data` or ConfigDrive
-  `user_data` in the current
-  milestone.
+- Only the enabled separate PowerShell plugin may open selected-source user-data.
+  Require allow_privileged, exact script/image SHA-256 pins, and execution_id.
+  Never compile its interpreter/executor package into cmd/wininit.
+- Prepare validates and snapshots at most 1 MiB of UTF-8 #ps1/#ps1_sysnative
+  without execution. Revalidate selected source instance/hostname first.
+  Persist/flush started intent before dispatch; failed, interrupted or unknown
+  outcomes require a new execution_id. A changed script pin cannot reuse an ID.
+  Keep at most 128 journal entries without eviction; preserve them across instances.
+- PowerShell retains the elevated caller account in a suspended, kill-on-close
+  job (8 processes, 512 MiB total/per-process), private desktop and scrubbed
+  environment. Remove direct shutdown privileges; this is trusted privileged
+  code, not a hostile script sandbox. Native execution requires that job/token.
+- Execute only the pinned native System32 Windows PowerShell 5.1 interpreter
+  via a constant bootstrap and private stdin. Do not put script bytes in argv
+  or temporary payload files; do not bypass execution policy or disable AMSI,
+  script logging or other OS auditing. Document those external artifact limits.
+- Exit 3010 requests an administrator reboot; never reboot automatically. Use a
+  protected volatile Registry boot marker so service restarts do not clear it.
+  Journal contents are hashes, times, codes and byte counts only. See ADR 0013.
 - Refuse ambiguous media/datasource selection and domain-joined hostname mutation.
 - Apply least privilege and restrictive ACLs where Windows permits it.
 - Do not disable certificate or integrity checks to make a test pass.
@@ -435,3 +459,7 @@ A change is done only when:
 - user-facing and architectural documentation describes actual behavior; and
 - this file reflects every architecture, interface, workflow, build,
   packaging, security, or convention change.
+
+PowerShell build separation is enforced by `scripts/check-plugin-boundary.sh`
+in Linux CI. Native tests must use the actual interpreter and job/token role;
+protocol fixture servers test wire behavior only and do not stand in for it.

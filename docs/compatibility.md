@@ -37,7 +37,7 @@ guests. It also does not test the Windows Server 2022 target.
 | Standard local users / initial passwords | Implemented; disabled by default; groups/domain/admin accounts excluded |
 | Local SAM password/lockout policy | Implemented; disabled by default; domain-joined hosts refused |
 | Per-user SSH managed key blocks | Implemented; disabled by default; existing-server login/revocation verified on a 2025 guest; sshd setup unmanaged |
-| PowerShell user-data | Planned |
+| PowerShell user-data | Separate opt-in EXE; bounded hash-approved execution; real reboot matrix pending |
 | Hostname restart checkpoint/reconciliation | Implemented; no automatic restart |
 | External ConfigDrive | Experimental v1 gRPC process; opt-in; trusted binaries only |
 

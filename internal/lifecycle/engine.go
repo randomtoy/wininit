@@ -18,10 +18,18 @@ type Engine struct {
 	now               func() time.Time
 	catalog           plugin.Catalog
 	configurationHash string
+	bootID            func(context.Context) (string, error)
 }
 
 func New(store state.Store, logger *slog.Logger) *Engine {
-	return &Engine{store: store, logger: logger, now: time.Now}
+	return &Engine{store: store, logger: logger, now: time.Now, bootID: func(ctx context.Context) (string, error) {
+		if boots, ok := store.(interface {
+			BootID(context.Context) (string, error)
+		}); ok {
+			return boots.BootID(ctx)
+		}
+		return "", state.ErrUnsupported
+	}}
 }
 
 func NewWithPlugins(store state.Store, logger *slog.Logger, catalog plugin.Catalog, configurationHash string) *Engine {

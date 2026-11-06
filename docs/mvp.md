@@ -44,9 +44,9 @@ pending.
 - network metadata sources and EC2/legacy ConfigDrive layouts;
 - metadata keys beyond NoCloud `instance-id`/`local-hostname` and OpenStack `uuid`/`hostname`;
 - domain/admin accounts, group administration, and password rotation;
-- PowerShell user-data execution;
+- unrestricted user-data execution (the opt-in, pinned PowerShell EXE is experimental);
 - automatic restart orchestration;
-- arbitrary third-party execution, external provisioners, or a stable general SDK;
+- arbitrary third-party execution or a stable general SDK;
 - real Windows Server 2022/2025 VM end-to-end verification; and
 - production code signing.
 
