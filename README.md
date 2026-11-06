@@ -7,7 +7,7 @@ Go. It is intended for Windows Server guests running on QEMU/KVM and OpenStack
 and is being designed for NoCloud and OpenStack ConfigDrive metadata.
 
 > [!IMPORTANT]
-> The project is in an early provisioning milestone. It includes an opt-in,
+> The project is in an early provisioning milestone. It includes opt-in
 > NoCloud and ConfigDrive datasources, hostname, local users, password policy,
 > and SSH keys. All are disabled by default. ConfigDrive can optionally run as a
 > separate verified EXE. User-data is never opened or
@@ -218,6 +218,9 @@ Tests must clean up resources they create. They must never use the production
 Registry path unless an explicitly isolated integration scenario requires it.
 Real QEMU/KVM Windows Server 2022 and 2025 NoCloud, rename, restart, and resume
 end-to-end validation is still pending.
+The narrower [Windows Server 2025 guest review](tests/e2e/2026-11-06-pr4-review.md)
+verified identity, real SSH login/revocation, external ConfigDrive local seeds,
+SCM cancellation, and MSI installation/upgrade without restarting the guest.
 
 ## Security
 
@@ -225,9 +228,10 @@ The service may require LocalSystem privileges for provisioning work. NoCloud an
 media, metadata, configuration, and future external plugins must all be treated
 as untrusted. NoCloud consumes `instance-id` and optional `local-hostname`;
 ConfigDrive consumes `uuid` and optional `hostname`. Neither opens or executes user-data. External
-plugin execution is intentionally absent until identity, checksum, protocol
-negotiation, least-privilege execution, deadlines, cancellation, and
-secret-redaction controls are designed and reviewed.
+ConfigDrive execution requires an explicitly selected reviewed image, pinned
+checksum, version/identity negotiation, restricted process launch, deadlines,
+cancellation, and output redaction. The [experimental process protocol](docs/external-plugins.md)
+supports trusted ConfigDrive binaries; it is not a hostile-code sandbox.
 
 Read [SECURITY.md](SECURITY.md) and [Security model](docs/security.md) before
 working on state, diagnostics, metadata, user-data, or plugins.

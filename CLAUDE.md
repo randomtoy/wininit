@@ -110,6 +110,11 @@ an automated command and remains unexecuted until an appropriate VM is
 available. Never claim rename, restart, or resume validation without recording
 an actual run of that procedure.
 
+`tests/e2e/2026-11-06-pr4-review.md` records a narrower Windows Server 2025 SSH
+guest run for identity/access, local-seed external ConfigDrive, SCM, and MSI.
+No restart was authorized or run. SSH access-group setup is an administrator
+precondition outside wininit; do not imply the plugin manages groups or sshd.
+
 ## Configuration rules
 
 - Configuration has an explicit schema version. Reject unsupported versions
@@ -147,9 +152,10 @@ an actual run of that procedure.
   checkpoint.
 - `RegFlushKey` is expensive and system-wide at the hive level. Keep state saves
   at low-frequency lifecycle/plugin boundaries; never add a polling save loop.
-- Store only SHA-256 of instance, metadata, plugin name, and configuration
-  fingerprint in plugin checkpoints. Never store raw targets, passwords, or
-  password hashes. Redact complete identity lists from diagnostic configuration.
+- Keep the selected instance ID in aggregate lifecycle state. Plugin input
+  checkpoints store only SHA-256 of instance, metadata, plugin name, and
+  configuration fingerprint. Never store raw targets, passwords, or password
+  hashes. Redact complete identity lists from diagnostic configuration.
 - State-store implementations own the monotonically increasing checkpoint
   generation; callers must not choose or decrement it.
 - Preserve enough error metadata for diagnosis without storing untrusted or

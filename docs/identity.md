@@ -146,16 +146,20 @@ not propagate permissions through existing child files or their hard links.
 
 Administrator accounts are refused because default Windows OpenSSH uses a
 shared `administrators_authorized_keys` file. This plugin does not install or
-start OpenSSH Server, change `sshd_config`, open firewall ports, or prove SSH
+start OpenSSH Server, change `sshd_config`, open firewall ports, or verify SSH
 login. Custom `AuthorizedKeysFile` layouts are unsupported; use the standard
 per-user layout and independently verify server configuration.
+The account must also satisfy the host's `AllowUsers`/`AllowGroups` rules.
+Prepare any required non-administrative group membership outside wininit;
+the local-user plugin preserves it rather than managing SSH access groups.
 
 ## State, diagnostics, and validation
 
-Registry checkpoints retain only plugin status, counters, and a SHA-256 of
-instance/metadata/configuration identity. Password bytes and password hashes
-are never stored. Raw account lists, password-file paths, and public keys are
-removed from sanitized diagnostic configuration. Only the agent's own
+Aggregate Registry state retains the selected instance ID; plugin checkpoints
+retain status, counters, and a SHA-256 of their instance/metadata/configuration
+input. Password bytes and password hashes are never stored. Raw account lists,
+password-file paths, and public keys are removed from sanitized diagnostic
+configuration. Only the agent's own
 `wininit.log` is eligible for archive collection, and configured password files
 are excluded even if hard-linked to that log.
 
@@ -164,8 +168,9 @@ normalization, preservation/revocation, and failure paths. Elevated Windows
 integration tests create/delete a uniquely named account and profile, verify
 its initial password survives reruns, inspect SSH ACLs and unsafe paths, and
 round-trip local password policy with exact restoration. Run these only on a
-disposable Windows test host. Real guest SSH login and reboot acceptance remain
-pending.
+disposable Windows test host. [PR 4 guest review](../tests/e2e/2026-11-06-pr4-review.md)
+records a Windows Server 2025 SCM/identity/SSH login run. Windows Server 2022
+and rename/reboot/resume acceptance remain pending.
 
 References: [Windows OpenSSH keys](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_keymanagement),
 [NetUserAdd](https://learn.microsoft.com/en-us/windows/win32/api/lmaccess/nf-lmaccess-netuseradd),

@@ -37,8 +37,9 @@ mounted `config-2` FAT/ISO9660 volumes, versioned JSON, `uuid`, and normalized
 conflicts, and simulated hostname resume. No source precedence is guessed.
 
 Remaining exit criteria: validate media attachment, discovery, rename, and
-restart/resume against real OpenStack/QEMU Windows guests. That environment is
-not currently available. Networking, EC2 layouts, injected files, and user-data
+restart/resume against real OpenStack/QEMU Windows guests. The PR 4 guest review
+covered external ConfigDrive with a local seed, without media attachment or a
+restart. Networking, EC2 layouts, injected files, and user-data
 are outside this milestone.
 
 ## 4. Identity and access provisioning
@@ -55,8 +56,10 @@ local identity contract. See [identity](identity.md) and ADR 0011.
 
 Exit criteria: secrets are never placed in state, logs, or diagnostics; ACLs
 and rerun behavior are tested.
-Automated tests cover these component/native boundaries. Real Windows guest
-SSH login and complete provisioning acceptance remain pending.
+Automated tests cover these component/native boundaries. The
+[PR 4 guest review](../tests/e2e/2026-11-06-pr4-review.md) additionally verified
+the complete local identity pipeline and SSH login/revocation on Windows
+Server 2025. Windows Server 2022 and the full media/reboot matrix remain pending.
 
 ## 5. PowerShell user-data
 
