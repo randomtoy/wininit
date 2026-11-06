@@ -463,3 +463,12 @@ A change is done only when:
 PowerShell build separation is enforced by `scripts/check-plugin-boundary.sh`
 in Linux CI. Native tests must use the actual interpreter and job/token role;
 protocol fixture servers test wire behavior only and do not stand in for it.
+
+Native PowerShell tests also exercise selected-source execution through real
+Registry checkpoints, success/failure replay prevention, and descendant cleanup
+on cancellation. No test invokes reboot or hostname mutation on shared CI.
+
+The constant PowerShell bootstrap dot-sources the approved ScriptBlock in its
+own process scope so the native LASTEXITCODE is preserved; test both native
+nonzero exits and terminating errors. Native tests allow a cold interpreter
+startup without changing configured production session deadlines.

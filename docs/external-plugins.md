@@ -158,3 +158,8 @@ crash, environment isolation, deadlines, cancellation, and error redaction.
 
 See [ADR 0012](adr/0012-process-configdrive.md) and
 [go-plugin](https://github.com/hashicorp/go-plugin).
+
+PowerShell uses a separate privileged process role and experimental userdata v1
+SDK, not the read-only ConfigDrive role described above. Its separate artifact
+shares this repository and release manifest; see [PowerShell policy](powershell-user-data.md)
+and ADR 0013 for approval, two-phase execution, journal and audit boundaries.

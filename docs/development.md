@@ -100,7 +100,7 @@ protoc 33.4 and pinned generators:
 ```sh
 go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12
 go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.0
-protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative sdk/datasource/v1/datasource.proto
+protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative sdk/datasource/v1/datasource.proto sdk/userdata/v1/userdata.proto
 ```
 
 Ensure the Go binary directory is on PATH. Keep wire changes compatible within

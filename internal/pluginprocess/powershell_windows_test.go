@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/randomtoy/wininit/internal/lifecycle"
 	"github.com/randomtoy/wininit/internal/platform/securefile"
@@ -15,10 +16,12 @@ import (
 	"github.com/randomtoy/wininit/internal/state"
 	"github.com/randomtoy/wininit/plugins/datasource/configdrive"
 	"github.com/randomtoy/wininit/plugins/datasource/nocloud"
+	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -38,6 +41,7 @@ func TestWindowsActualPowerShellExecution(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			settings := psSettings(t, "powershell")
+			settings.Process.TimeoutSeconds = 60
 			seed := t.TempDir()
 			if err := os.WriteFile(filepath.Join(seed, "meta-data"), []byte("instance-id: native-instance\n"), 0600); err != nil {
 				t.Fatal(err)
@@ -118,6 +122,7 @@ func TestWindowsPowerShellRegistryJournalAndSelectedSources(t *testing.T) {
 			}
 			prepareTestPath(t, seed)
 			settings := psSettings(t, "powershell")
+			settings.Process.TimeoutSeconds = 60
 			sum := sha256.Sum256(script)
 			settings.ScriptSHA256 = hex.EncodeToString(sum[:])
 			registryPath := fmt.Sprintf(`SOFTWARE\WininitTests\powershell-%d`, time.Now().UnixNano())
@@ -127,7 +132,7 @@ func TestWindowsPowerShellRegistryJournalAndSelectedSources(t *testing.T) {
 			})
 			var logs bytes.Buffer
 			run := func() (state.State, error) {
-				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 				defer cancel()
 				store := &terminalStore{RegistryStore: state.NewRegistryStore(registryPath), stop: cancel}
 				p := NewPowerShell(settings, map[string]SourceSettings{source: {Directory: seed}})
@@ -196,4 +201,69 @@ func TestWindowsPowerShellInterpreterImageBoundary(t *testing.T) {
 		t.Fatalf("native OS PowerShell image verification: %v", err)
 	}
 	defer image.Close()
+}
+
+func TestWindowsPowerShellCancellationKillsNativeDescendant(t *testing.T) {
+	settings := psSettings(t, "powershell")
+	settings.Process.TimeoutSeconds = 60
+	settings.Process.TimeoutSeconds = 60
+	seed := t.TempDir()
+	pidFile := filepath.Join(seed, "child.pid")
+	body := `$child=Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -ArgumentList '-NoLogo','-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 60' -NoNewWindow -PassThru; [IO.File]::WriteAllText('` + pidFile + `',[string]$child.Id); Start-Sleep -Seconds 60`
+	script := []byte("#ps1\n" + body + "\n")
+	for name, data := range map[string][]byte{"meta-data": []byte("instance-id: cancellation\n"), "user-data": script} {
+		if err := os.WriteFile(filepath.Join(seed, name), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	prepareTestPath(t, seed)
+	sum := sha256.Sum256(script)
+	settings.ScriptSHA256 = hex.EncodeToString(sum[:])
+	p := NewPowerShell(settings, map[string]SourceSettings{"nocloud": {Directory: seed}})
+	plan, err := p.Prepare(context.Background(), plugin.Metadata{InstanceID: "cancellation", Datasource: "nocloud"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer plan.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { _, err := plan.Execute(ctx); done <- err }()
+	var pid uint64
+	until := time.Now().Add(45 * time.Second)
+	for time.Now().Before(until) {
+		if data, err := os.ReadFile(pidFile); err == nil {
+			pid, _ = strconv.ParseUint(string(data), 10, 32)
+			if pid != 0 {
+				break
+			}
+		}
+		select {
+		case err := <-done:
+			t.Fatalf("script failed before native descendant: %v", err)
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+	if pid == 0 {
+		t.Fatal("native descendant did not start")
+	}
+	process, err := windows.OpenProcess(windows.SYNCHRONIZE|windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer windows.CloseHandle(process)
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("unexpected cancellation outcome: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Execute did not honor cancellation")
+	}
+	plan.Close()
+	result, err := windows.WaitForSingleObject(process, 5000)
+	if err != nil || result != windows.WAIT_OBJECT_0 {
+		t.Fatal("native descendant survived cancelled job", result, err)
+	}
 }
