@@ -342,7 +342,11 @@ an actual run of that procedure.
   error's cause is the root context cancellation. Do not swallow an unrelated
   failure merely because the root context is also done.
 - Reuse an equal/earlier RPC parent deadline rather than installing a competing
-  timer. Report only fixed RPC status codes, never remote error payloads.
+  timer. The host owns deadline timing; RPC contexts forward Done/Err without
+  grpc-timeout so a rounded remote timer cannot win the race. The SDK retains
+  its independent provider upper bound. An early remote DeadlineExceeded stays
+  a provider failure, not host cancellation. Report only fixed RPC status
+  codes, never remote error payloads.
 
 ## Packaging rules
 

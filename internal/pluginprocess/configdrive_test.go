@@ -88,6 +88,7 @@ func TestExternalFailuresAreBoundedAndSanitized(t *testing.T) {
 	for _, scenario := range []struct{ mode, message string }{
 		{"version", "handshake"}, {"identity", "identity"}, {"crash", "discovery"},
 		{"leak", "discovery"}, {"invalid", "uuid"}, {"unnormalized", "not normalized"},
+		{"earlydeadline", "discovery"},
 		{"conflict", "conflicting availability"}, {"hang", "deadline exceeded"},
 		{"nohandshake", "handshake"}, {"silent", "deadline exceeded"},
 	} {
@@ -105,6 +106,9 @@ func TestExternalFailuresAreBoundedAndSanitized(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), scenario.message) {
 				t.Fatalf("%s failed at the wrong boundary: %v", mode, err)
+			}
+			if mode == "earlydeadline" && errors.Is(err, context.DeadlineExceeded) {
+				t.Fatal("provider deadline error was mistaken for host cancellation")
 			}
 			if time.Since(start) > time.Duration(settings.TimeoutSeconds+6)*time.Second {
 				t.Fatal("process deadline/cleanup was not bounded")
@@ -149,6 +153,20 @@ func TestCancellationStopsRunningPlugin(t *testing.T) {
 	start := time.Now()
 	_, err := NewConfigDrive(settings, "", false).Discover(ctx)
 	if !errors.Is(err, context.DeadlineExceeded) || time.Since(start) > 8*time.Second {
+		t.Fatalf("cancel error=%v after %s", err, time.Since(start))
+	}
+}
+
+func TestExplicitCancellationStopsPlugin(t *testing.T) {
+	t.Parallel()
+	settings := processSettings(t, "hang")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	timer := time.AfterFunc(500*time.Millisecond, cancel)
+	defer timer.Stop()
+	start := time.Now()
+	_, err := NewConfigDrive(settings, "", false).Discover(ctx)
+	if !errors.Is(err, context.Canceled) || time.Since(start) > 8*time.Second {
 		t.Fatalf("cancel error=%v after %s", err, time.Since(start))
 	}
 }

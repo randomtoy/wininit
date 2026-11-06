@@ -102,7 +102,10 @@ func (p *ConfigDrive) Discover(parent context.Context) (plugin.Metadata, error) 
 				stop := context.AfterFunc(ctx, cancel)
 				defer cancel()
 				defer stop()
-				return invoke(bounded, method, request, response, connection, options...)
+				// The host owns the deadline timer. Forward cancellation without
+				// grpc-timeout: a rounded remote timer could expire first and
+				// misclassify host cancellation as a provider failure.
+				return invoke(cancellationContext{bounded}, method, request, response, connection, options...)
 			}),
 		},
 		Logger: hclog.NewNullLogger(), SyncStdout: io.Discard, SyncStderr: io.Discard,
@@ -193,6 +196,12 @@ func (p *ConfigDrive) Discover(parent context.Context) (plugin.Metadata, error) 
 	return metadata, nil
 }
 func deadline(ctx context.Context) time.Time { value, _ := ctx.Deadline(); return value }
+
+// Keep Done/Err from the bounded host context, without installing another
+// deadline timer in gRPC or the remote process. The SDK also bounds providers.
+type cancellationContext struct{ context.Context }
+
+func (cancellationContext) Deadline() (time.Time, bool) { return time.Time{}, false }
 
 func cancelledRPC(ctx context.Context, process *processRunner, cause error) bool {
 	if ctx.Err() == nil {

@@ -99,6 +99,9 @@ work.
 
 The configured 1–60 second deadline covers startup, identity negotiation,
 discovery, and RPCs, including framework calls. Cancellation kills the process.
+The host owns this deadline and propagates RPC cancellation rather than a
+second rounded remote timeout. The SDK additionally caps provider calls at
+60 seconds. A provider's early deadline error remains a discovery failure.
 Each discovery starts a fresh process and cleanup runs on success and failure;
 the agent does not keep a plugin daemon or retry automatically. Plugin stdout,
 stderr, and remote error text are discarded or mapped to fixed host errors,

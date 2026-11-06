@@ -49,6 +49,8 @@ func (f *fixture) Discover(ctx context.Context, request *datasourcev1.DiscoverRe
 		return &datasourcev1.DiscoverResponse{Metadata: &datasourcev1.Metadata{InstanceId: "", LocalHostname: "bad/path"}}, nil
 	case "unnormalized":
 		return &datasourcev1.DiscoverResponse{Metadata: &datasourcev1.Metadata{InstanceId: "vm", LocalHostname: "Node.example"}}, nil
+	case "earlydeadline":
+		return nil, status.Error(codes.DeadlineExceeded, "fixture-private-secret")
 	case "unavailable":
 		return &datasourcev1.DiscoverResponse{Unavailable: true}, nil
 	case "conflict":

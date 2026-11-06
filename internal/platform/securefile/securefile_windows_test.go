@@ -41,7 +41,7 @@ func TestVerifiedExecutablePinsAllAncestors(t *testing.T) {
 	if err := os.WriteFile(path, []byte("verified-image"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	sd, err := windows.SecurityDescriptorFromString("O:BAG:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)")
+	sd, err := windows.SecurityDescriptorFromString("O:BAG:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestVerifiedExecutablePinsAllAncestors(t *testing.T) {
 	dacl, _, _ := sd.DACL()
 	for _, target := range []string{parent, path} {
 		if err := windows.SetNamedSecurityInfo(target, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, owner, nil, dacl, nil); err != nil {
-			t.Fatal(err)
+			t.Fatalf("protect executable fixture: %v", err)
 		}
 	}
 	image, err := TrustedExecutable(path)
