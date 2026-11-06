@@ -51,9 +51,6 @@ func (s *RegistryStore) openStateKey(ctx context.Context, access uint32, create 
 			return 0, err
 		}
 		rights := uint32(registry.READ)
-		if create {
-			rights |= registry.CREATE_SUB_KEY
-		}
 		if index == len(parts)-1 {
 			rights = access | windows.READ_CONTROL
 		}

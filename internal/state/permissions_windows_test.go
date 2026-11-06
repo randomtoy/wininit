@@ -32,6 +32,21 @@ func registryTestACL(t *testing.T, key registry.Key, descriptor string) {
 	}
 }
 
+func TestRegistrySystemSoftwareSecurity(t *testing.T) {
+	key, err := registry.OpenKey(registry.LOCAL_MACHINE, `SOFTWARE`, registry.READ)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer key.Close()
+	if err := trustedRegistryKey(key); err != nil {
+		sd, inspectErr := windows.GetSecurityInfo(windows.Handle(key), windows.SE_REGISTRY_KEY, windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
+		if inspectErr != nil {
+			t.Fatalf("SOFTWARE security: %v (inspection: %v)", err, inspectErr)
+		}
+		t.Fatalf("SOFTWARE security: %v (descriptor: %s)", err, sd.String())
+	}
+}
+
 func TestRegistryRejectsWritableJournalAndAncestors(t *testing.T) {
 	for _, ancestor := range []bool{false, true} {
 		t.Run(fmt.Sprintf("ancestor-%t", ancestor), func(t *testing.T) {
@@ -110,6 +125,35 @@ func TestRegistryTrustedLegacyCheckpointStillMigrates(t *testing.T) {
 		t.Fatalf("trusted migration=%#v error=%v", got, err)
 	}
 	if err := store.Save(context.Background(), got); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRegistryCanUpdateTrustedStateBelowReadOnlyAncestor(t *testing.T) {
+	parent := fmt.Sprintf(`SOFTWARE\WininitTests\readonly-%d`, time.Now().UnixNano())
+	path := parent + `\State`
+	t.Cleanup(func() {
+		_ = registry.DeleteKey(registry.LOCAL_MACHINE, path)
+		_ = registry.DeleteKey(registry.LOCAL_MACHINE, parent)
+	})
+	store := NewRegistryStore(path)
+	value := Initial(time.Now())
+	if err := store.Save(context.Background(), value); err != nil {
+		t.Fatal(err)
+	}
+	key, err := registry.OpenKey(registry.LOCAL_MACHINE, parent, registry.ALL_ACCESS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer key.Close()
+	defer registryTestACL(t, key, "O:BAG:BAD:P(A;;KA;;;SY)(A;;KA;;;BA)")
+	registryTestACL(t, key, "O:BAG:BAD:P(A;;KR;;;SY)(A;;KR;;;BA)")
+	// Updating the existing child needs its rights, not CREATE_SUB_KEY on an
+	// already existing ancestor. Ownership and every mutation ACE stay trusted.
+	if err := store.Save(context.Background(), value); err != nil {
+		t.Fatalf("requested unnecessary ancestor mutation rights: %v", err)
+	}
+	if _, err := store.Load(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 }
