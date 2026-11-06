@@ -281,9 +281,12 @@ an actual run of that procedure.
   sorted scrubbed environment, and an explicit three-handle stdio allowlist.
   Keep the initial thread handle for job assignment before resume. Close UI,
   token, job, process, thread, pipe, and cancellation resources on every path.
-- CreateDesktop attaches its calling thread. Use a dedicated locked creator
-  goroutine, restore the process station, then let its OS thread terminate and
-  join it before returning handles. Never return a UI-affiliated thread to Go.
+- CreateDesktop attaches its calling thread. Use a native creator thread and a
+  single cached Go callback; pass no Go pointers as native parameters. Restore
+  the process station and join the native thread before returning handles.
+  Keep request state in an atomic Go reference under the creation mutex.
+  Never return a UI-affiliated thread to Go's pool or try to retire its initial
+  runtime thread.
 - These are reviewed trusted-code plugins, not an AppContainer sandbox.
   Outbound networking and filesystem reads are not completely OS-isolated.
   Do not claim otherwise or enable arbitrary unreviewed code. Protocol endpoints

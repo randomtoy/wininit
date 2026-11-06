@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
+	"sync/atomic"
+	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -22,49 +24,58 @@ var (
 	createDesktop           = user32.NewProc("CreateDesktopW")
 	closeDesktop            = user32.NewProc("CloseDesktop")
 	closeWindowStation      = user32.NewProc("CloseWindowStation")
+	createNativeThread      = windows.NewLazySystemDLL("kernel32.dll").NewProc("CreateThread")
 	// Association is process-wide. The host is headless; this serialized scope
 	// restores it before any child is created.
-	desktopCreationMu sync.Mutex
+	desktopCreationMu   sync.Mutex
+	desktopCallbackOnce sync.Once
+	desktopCallback     uintptr
+	desktopRequest      atomic.Pointer[desktopCreationResult]
 )
 
 type privateDesktop struct {
 	name             string
 	station, desktop windows.Handle
 }
+type desktopCreationResult struct {
+	desktop *privateDesktop
+	err     error
+	done    chan struct{}
+}
 
 func newPrivateDesktop() (*privateDesktop, error) {
 	desktopCreationMu.Lock()
 	defer desktopCreationMu.Unlock()
-	type created struct {
-		desktop *privateDesktop
-		thread  windows.Handle
-		err     error
+	// A locked Go goroutine may run on the runtime's immortal initial thread.
+	// Use a real native thread whose callback returns to ExitThread instead.
+	// Its only native parameter is zero; Go state stays rooted in Go memory.
+	desktopCallbackOnce.Do(func() { desktopCallback = syscall.NewCallback(desktopThreadEntry) })
+	outcome := &desktopCreationResult{done: make(chan struct{})}
+	desktopRequest.Store(outcome)
+	defer desktopRequest.Store(nil)
+	thread, _, callErr := createNativeThread.Call(0, 0, desktopCallback, 0, 0, 0)
+	if thread == 0 {
+		return nil, fmt.Errorf("create desktop worker thread: %w", callErr)
 	}
-	result := make(chan created, 1)
-	go func() {
-		// CreateDesktop attaches the calling thread. Exiting while still locked
-		// makes Go dispose of it; no UI-affiliated thread returns to the pool.
-		runtime.LockOSThread()
-		var thread windows.Handle
-		if err := windows.DuplicateHandle(windows.CurrentProcess(), windows.CurrentThread(), windows.CurrentProcess(), &thread, windows.SYNCHRONIZE, false, 0); err != nil {
-			result <- created{err: err}
-			return
-		}
-		desktop, err := createPrivateDesktopOnThread()
-		result <- created{desktop, thread, err}
-	}()
-	outcome := <-result
-	if outcome.thread != 0 {
-		_, err := windows.WaitForSingleObject(outcome.thread, windows.INFINITE)
-		windows.CloseHandle(outcome.thread)
-		if err != nil {
-			if outcome.desktop != nil {
-				outcome.desktop.close()
-			}
-			return nil, err
-		}
+	_, err := windows.WaitForSingleObject(windows.Handle(thread), windows.INFINITE)
+	windows.CloseHandle(windows.Handle(thread))
+	if err != nil {
+		return nil, err
 	}
+	<-outcome.done // Publishes Go fields independently of the native wait.
 	return outcome.desktop, outcome.err
+}
+
+func desktopThreadEntry(uintptr) uintptr {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	outcome := desktopRequest.Load()
+	if outcome == nil {
+		return 1
+	}
+	outcome.desktop, outcome.err = createPrivateDesktopOnThread()
+	close(outcome.done)
+	return 0
 }
 
 func createPrivateDesktopOnThread() (*privateDesktop, error) {
