@@ -25,7 +25,8 @@ registry scanning, argument injection, reattachment, or built-in fallback is
 allowed.
 
 Require a pinned SHA-256 and protected local executable/parent ACLs. Keep the
-verified Windows image locked against replacement. Discard child output and
+verified Windows image and every path ancestor locked against replacement or
+rename through cleanup, preventing directory swaps before Win32 launch. Discard child output and
 sanitize remote errors. Bound all RPCs/startup by 1–60 seconds and messages by
 128 KiB; validate responses against the internal metadata contract.
 
@@ -33,9 +34,13 @@ Launch on Windows with a restricted token, deny-only Administrators, an
 ordinary Users/Authenticated Users/Everyone restricting list for a second ACL
 check, low integrity, and disabled privileges except traversal. Retain caller
 identity for Windows initialization while refusing SYSTEM/Admin-only files.
+Add a random per-launch restricting SID and grant it access in the token's
+default object DACL so runtime-created objects remain usable and private.
 Use explicit native CreateProcessAsUser with a separate noninteractive
 low-integrity window station/desktop and an exact three-handle stdio allowlist.
-Serialize and restore the headless parent's temporary station switch. Create suspended,
+Serialize and restore the headless parent's temporary station switch on a
+dedicated native creator thread; join it before child creation rather than
+returning a desktop-affiliated thread to Go's pool. Create suspended,
 assign to a kill-on-close job with active-process limit 1, 256 MiB memory
 limit, and no window, then resume. Omit job UI limits because they prevent
 nesting in an existing host job; job containment remains mandatory. Inherit only protocol bootstrap and

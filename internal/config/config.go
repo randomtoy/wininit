@@ -104,10 +104,7 @@ func Default() Config {
 				NoCloud:     LocalDatasourceConfig{DiscoverVolumes: true},
 				ConfigDrive: ConfigDriveConfig{LocalDatasourceConfig: LocalDatasourceConfig{DiscoverVolumes: true}, Execution: "builtin", Process: pluginprocess.Settings{TimeoutSeconds: 15}},
 			},
-			Provisioners: ProvisionerConfig{PasswordPolicy: PasswordPolicyConfig{PasswordPolicy: identity.PasswordPolicy{
-				MinimumLength: 14, MaximumAgeDays: 90, MinimumAgeDays: 1, HistoryLength: 24,
-				LockoutThreshold: 10, LockoutDurationMinutes: 15, LockoutWindowMinutes: 15,
-			}}},
+			Provisioners: ProvisionerConfig{PasswordPolicy: PasswordPolicyConfig{PasswordPolicy: identity.DefaultPasswordPolicy()}},
 		},
 		Reboot: RebootConfig{Policy: "never"},
 	}

@@ -56,7 +56,9 @@ Get-FileHash -Algorithm SHA256 -LiteralPath 'C:\Program Files\WinInit\plugins\wi
 ```
 
 An image and containing directory must have a SYSTEM/Administrators owner and
-no other write/delete/ACL/ownership grants. The restricted child needs ordinary
+no other write/delete/ACL/ownership grants. The host pins the verified image
+and every path ancestor against replacement or rename until process cleanup,
+so the subsequent Win32 launch uses that verified path. The restricted child needs ordinary
 Users read/execute access to the executable and read access to the selected
 seed. Protected password files must remain unreadable to Users. Use SID-based
 ACLs, including `/setowner '*S-1-5-32-544'` for manually copied images; inherited
@@ -110,7 +112,10 @@ The child uses a restricted primary token: Administrators is deny-only, and
 Users, Authenticated Users, and Everyone form a restricting SID list which
 requires a second ACL access check. Caller identity is retained for Windows
 initialization, but SYSTEM/Admin-only files fail that second check. Privileges
-are disabled except traversal and integrity is low. It does not inherit the
+are disabled except traversal and integrity is low. Each launch also has a
+random private restricting SID. Its default object DACL grants that SID access
+so runtime-created objects pass both checks without granting ordinary users
+control over them. It does not inherit the
 host environment or input; only
 Windows system-directory settings and protocol bootstrap values are supplied.
 
@@ -124,7 +129,9 @@ loopback control endpoints, RPC size/deadline limits, and cleanup.
 Native `CreateProcessAsUser` explicitly selects a fresh noninteractive,
 low-integrity window station and desktop. They are separate from host UI and
 are closed with the process. The headless parent serializes and restores a
-temporary window-station switch while creating those objects. Only a null
+temporary window-station switch while creating those objects on a dedicated
+native thread. That thread exits and is joined before child creation because
+creating a desktop attaches its calling thread. Only a null
 stdin and stdout/stderr pipe handles are inherited through an explicit handle
 allowlist; token, job, image, and other host handles are not inherited.
 

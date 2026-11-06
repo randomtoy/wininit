@@ -314,7 +314,9 @@ func (c *processControl) close() {
 		}
 	})
 }
-func openExecutable(path string) (*os.File, error) { return securefile.TrustedFile(path, false) }
+func openExecutable(path string) (*securefile.PinnedFile, error) {
+	return securefile.TrustedExecutable(path)
+}
 func environment() []string {
 	path, err := windows.GetSystemWindowsDirectory()
 	if err != nil {

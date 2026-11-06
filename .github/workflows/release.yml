@@ -71,11 +71,14 @@ jobs:
           if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
             throw 'The release job requires administrator privileges for isolated HKLM, SCM, and MSI tests.'
           }
+      - name: Verify dependencies
+        run: go mod verify
       - name: Run Windows tests
-        run: |
-          go mod verify
-          go test ./...
-          go test -tags=integration ./...
+        id: windows-unit
+        run: go test ./...
+      - name: Run isolated Windows integration tests
+        if: success() || steps.windows-unit.outcome == 'failure'
+        run: go test -tags=integration ./...
       - name: Build signed-version metadata and unsigned packages
         id: package
         shell: pwsh

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"unsafe"
 
 	"github.com/randomtoy/wininit/internal/identity"
@@ -154,10 +155,14 @@ func TrustedFile(path string, secret bool) (*os.File, error) {
 		return nil, fmt.Errorf("open protected parent directory: %w", err)
 	}
 	defer parent.Close()
+	return trustedFileAt(parent, filepath.Base(path), secret)
+}
+
+func trustedFileAt(parent *os.File, name string, secret bool) (*os.File, error) {
 	if err := TrustedACL(parent, false); err != nil {
 		return nil, err
 	}
-	file, err := OpenRelative(windows.Handle(parent.Fd()), filepath.Base(path), windows.GENERIC_READ|windows.READ_CONTROL, windows.FILE_OPEN, windows.FILE_NON_DIRECTORY_FILE, nil)
+	file, err := OpenRelative(windows.Handle(parent.Fd()), name, windows.GENERIC_READ|windows.READ_CONTROL, windows.FILE_OPEN, windows.FILE_NON_DIRECTORY_FILE, nil)
 	if err != nil {
 		return nil, fmt.Errorf("open protected file: %w", err)
 	}
@@ -171,4 +176,58 @@ func TrustedFile(path string, secret bool) (*os.File, error) {
 		return nil, errors.New("protected files must have exactly one hard link")
 	}
 	return file, nil
+}
+
+// PinnedFile keeps every ancestor fixed while a verified image is launched by
+// its Win32 path. A locked file alone cannot protect against directory swaps.
+type PinnedFile struct {
+	*os.File
+	parents []*os.File
+	once    sync.Once
+	err     error
+}
+
+func (file *PinnedFile) Close() error {
+	file.once.Do(func() {
+		file.err = file.File.Close()
+		for index := len(file.parents) - 1; index >= 0; index-- {
+			file.err = errors.Join(file.err, file.parents[index].Close())
+		}
+	})
+	return file.err
+}
+
+func TrustedExecutable(path string) (_ *PinnedFile, err error) {
+	if err := checkLocalPath(path); err != nil {
+		return nil, err
+	}
+	volume := filepath.VolumeName(path)
+	parts := strings.Split(strings.TrimPrefix(filepath.Clean(path), volume+`\`), `\`)
+	if len(parts) == 0 || parts[0] == "" {
+		return nil, errors.New("executable must name a file below a drive root")
+	}
+	parent, err := OpenLocal(volume+`\`, windows.READ_CONTROL|windows.FILE_TRAVERSE, windows.FILE_DIRECTORY_FILE)
+	if err != nil {
+		return nil, err
+	}
+	parents := []*os.File{parent}
+	defer func() {
+		if err != nil {
+			for index := len(parents) - 1; index >= 0; index-- {
+				parents[index].Close()
+			}
+		}
+	}()
+	for _, component := range parts[:len(parts)-1] {
+		parent, err = OpenRelative(windows.Handle(parent.Fd()), component, windows.READ_CONTROL|windows.FILE_TRAVERSE, windows.FILE_OPEN, windows.FILE_DIRECTORY_FILE, nil)
+		if err != nil {
+			return nil, err
+		}
+		parents = append(parents, parent)
+	}
+	image, err := trustedFileAt(parent, parts[len(parts)-1], false)
+	if err != nil {
+		return nil, err
+	}
+	return &PinnedFile{File: image, parents: parents}, nil
 }

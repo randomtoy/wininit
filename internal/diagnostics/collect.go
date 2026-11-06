@@ -25,7 +25,7 @@ type Manifest struct {
 }
 
 // Collect writes a ZIP containing an allowlisted configuration projection,
-// supplied status, a manifest, and regular .log files only.
+// supplied status, a manifest, and the regular wininit.log file only.
 func Collect(ctx context.Context, cfg config.Config, status any, output string) (err error) {
 	if err := ctx.Err(); err != nil {
 		return err

@@ -261,6 +261,9 @@ an actual run of that procedure.
   image, SHA-256 pin, trusted image/parent ACLs, locked verified image,
   matching handshake/identity, local mTLS, bounded messages, deadlines across
   framework calls, cancellation, and cleanup.
+  Pin every path ancestor without delete sharing until process cleanup; locking
+  the image alone does not prevent a Win32 launch path from being redirected
+  by a directory rename. Test ancestor swaps and release on Windows.
 - Windows children retain caller identity but use deny-only Administrators
   plus ordinary Users/Authenticated Users/Everyone restricting SIDs for a second
   ACL access check, disabled privileges, low
@@ -374,6 +377,8 @@ an actual run of that procedure.
   successful smoke test.
 - Run isolated integration tests even when native unit tests fail, to surface
   independent account/ACL/policy failures. Keep the original unit failure fatal.
+  CI and release use separate native-command steps so PowerShell cannot mask an
+  earlier verification/test failure behind a successful final command.
 - Process startup diagnostics may report fixed stages and numeric OS/exit
   codes; never expose raw child handshake, stderr, or RPC error contents.
 - Stage failure logs from ProgramData into the workspace artifact directory
