@@ -91,7 +91,7 @@ func (*Adapter) ReconcileKeys(ctx context.Context, user string, keys []string) (
 	}
 	profile, err := securefile.OpenLocal(path, windows.FILE_LIST_DIRECTORY|fileAddSubdirectory|windows.READ_CONTROL, windows.FILE_DIRECTORY_FILE)
 	if err != nil {
-		return false, errors.New("open local user profile without reparse points failed")
+		return false, fmt.Errorf("open local user profile without reparse points: %w", err)
 	}
 	defer profile.Close()
 	sd, err := windows.SecurityDescriptorFromString("O:BAG:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;" + sid + ")")
@@ -100,7 +100,7 @@ func (*Adapter) ReconcileKeys(ctx context.Context, user string, keys []string) (
 	}
 	sshDir, err := securefile.OpenRelative(windows.Handle(profile.Fd()), ".ssh", windows.FILE_GENERIC_READ|windows.FILE_GENERIC_WRITE|fileDeleteChild|windows.READ_CONTROL|windows.WRITE_DAC, windows.FILE_OPEN_IF, windows.FILE_DIRECTORY_FILE, sd)
 	if err != nil {
-		return false, errors.New("open or create .ssh without reparse points failed")
+		return false, fmt.Errorf("open or create .ssh without reparse points: %w", err)
 	}
 	defer sshDir.Close()
 	folderChanged, err := ensureKeyDirectoryACL(windows.Handle(sshDir.Fd()), sid, sd)
@@ -210,7 +210,7 @@ func readKeys(parent windows.Handle, sid string) ([]byte, bool, error) {
 		return nil, false, nil
 	}
 	if err != nil {
-		return nil, false, errors.New("open authorized_keys without reparse points failed")
+		return nil, false, fmt.Errorf("open authorized_keys without reparse points: %w", err)
 	}
 	defer file.Close()
 	var info windows.ByHandleFileInformation
@@ -239,7 +239,7 @@ func replaceKeys(ctx context.Context, parent windows.Handle, data []byte, sd *wi
 	}
 	file, err := securefile.OpenRelative(parent, ".wininit-"+hex.EncodeToString(random)+".tmp", windows.GENERIC_WRITE|windows.DELETE, windows.FILE_CREATE, windows.FILE_NON_DIRECTORY_FILE, sd)
 	if err != nil {
-		return errors.New("create protected authorized_keys replacement failed")
+		return fmt.Errorf("create protected authorized_keys replacement: %w", err)
 	}
 	defer file.Close()
 	committed := false
@@ -268,7 +268,7 @@ func replaceKeys(ctx context.Context, parent windows.Handle, data []byte, sd *wi
 	copy(unsafe.Slice(&rename.Name[0], length/2), name)
 	var iosb windows.IO_STATUS_BLOCK
 	if err := windows.NtSetInformationFile(windows.Handle(file.Fd()), &iosb, &buffer[0], uint32(len(buffer)), windows.FileRenameInformation); err != nil {
-		return errors.New("atomically publish authorized_keys failed")
+		return fmt.Errorf("atomically publish authorized_keys: %w", err)
 	}
 	committed = true
 	return nil
