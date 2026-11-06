@@ -39,6 +39,9 @@ try {
     $env:CGO_ENABLED = '0'
     & go build -trimpath -buildvcs=true -ldflags $ldflags -o $output ./cmd/wininit
     if ($LASTEXITCODE -ne 0) { throw "go build failed with exit code $LASTEXITCODE" }
+    $pluginOutput = Join-Path $DistDirectory 'wininit-plugin-configdrive-windows-amd64.exe'
+    & go build -trimpath -buildvcs=true -ldflags $ldflags -o $pluginOutput ./cmd/wininit-plugin-configdrive
+    if ($LASTEXITCODE -ne 0) { throw "ConfigDrive plugin build failed with exit code $LASTEXITCODE" }
 }
 finally {
     $env:GOOS = $previousGOOS

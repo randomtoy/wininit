@@ -7,9 +7,10 @@ Go. It is intended for Windows Server guests running on QEMU/KVM and OpenStack
 and is being designed for NoCloud and OpenStack ConfigDrive metadata.
 
 > [!IMPORTANT]
-> The project is in an early provisioning milestone. It includes an opt-in,
-> built-in NoCloud and OpenStack ConfigDrive datasources and an independently
-> opt-in Windows hostname provisioner. All are disabled by default. User-data is never opened or
+> The project is in an early provisioning milestone. It includes opt-in
+> NoCloud and ConfigDrive datasources, hostname, local users, password policy,
+> and SSH keys. All are disabled by default. ConfigDrive can optionally run as a
+> separate verified EXE. User-data is never opened or
 > executed. A running service must not be interpreted as a successfully
 > provisioned instance.
 
@@ -29,10 +30,10 @@ implementation of Cloudbase-Init.
 | NoCloud seed directory and mounted CIDATA volume datasource | Implemented; opt-in |
 | Conservative Windows hostname provisioning | Implemented; opt-in |
 | OpenStack ConfigDrive local seed and mounted config-2 datasource | Implemented; opt-in |
-| User, password, and SSH key provisioning | Planned |
+| Standard local users, initial passwords, SAM policy, SSH keys | Implemented; opt-in |
 | PowerShell user-data | Planned |
 | Hostname restart checkpoint/reconciliation | Implemented; no automatic restart |
-| External executable plugins and public Go SDK | Planned |
+| External ConfigDrive and versioned Go SDK | Experimental v1; opt-in |
 
 See [MVP scope](docs/mvp.md), [compatibility](docs/compatibility.md), and the
 [roadmap](docs/roadmap.md) for the exact boundary between implemented and
@@ -48,10 +49,10 @@ Windows, production state is kept under versioned Registry checkpoints; tests
 use an in-memory store.
 
 Small internal datasource and provisioner interfaces separate the pipeline
-from built-in implementations. NoCloud, ConfigDrive, and the hostname provisioner
-are compiled into the executable, independently configured, and never enabled
-implicitly. The external process/gRPC protocol remains deferred; no public
-plugin API is exposed by this milestone.
+from implementations. The six logical plugins are independently configured
+and never enabled implicitly. ConfigDrive can select an external executable
+using the experimental protobuf/gRPC SDK and HashiCorp go-plugin; the existing
+built-in mode remains compatible with older configuration.
 
 On each process start, the pipeline probes all enabled datasources and
 reconciles each enabled provisioner once. Built-in constructors perform no I/O;
@@ -89,10 +90,14 @@ Release artifacts are expected to contain:
 ```text
 wininit-windows-amd64.exe
 wininit-windows-amd64.msi
+wininit-plugin-configdrive-windows-amd64.exe
 SHA256SUMS
 ```
 
 Verify `SHA256SUMS` before installing. MVP artifacts are not code-signed.
+The MSI installs the agent. The optional plugin is a separate artifact; see
+[external plugin setup](docs/external-plugins.md). It is not discovered or
+launched just because it is present.
 
 For an interactive installation, open the MSI from an elevated Windows
 session. For unattended installation with a verbose log:
@@ -159,13 +164,16 @@ private keys, and raw user-data must never appear in a diagnostic archive.
 
 Configuration has an explicit schema version and is rejected when unsupported
 or invalid. Schema version 1 remains backward compatible: configurations which
-omit built-in plugin sections keep those plugins disabled. NoCloud, ConfigDrive,
-and hostname have separate `enabled` flags, and current configuration disablement
+omit plugin sections keep those plugins disabled. Every datasource and
+provisioner has its own `enabled` flag, and current configuration disablement
 always takes priority over old pending checkpoints. `reboot.policy` remains
 `never`; the agent never restarts Windows automatically.
 
 See [Configuration](docs/configuration.md) for the schema and default paths, and
 [Built-in plugins](docs/plugins.md) for exact opt-in and disable examples.
+Account creation/password policy/SSH setup is documented in
+[Identity and access](docs/identity.md). Process mode and the same-repository
+decision are documented in [External ConfigDrive](docs/external-plugins.md).
 
 ## Build
 
@@ -210,6 +218,9 @@ Tests must clean up resources they create. They must never use the production
 Registry path unless an explicitly isolated integration scenario requires it.
 Real QEMU/KVM Windows Server 2022 and 2025 NoCloud, rename, restart, and resume
 end-to-end validation is still pending.
+The narrower [Windows Server 2025 guest review](tests/e2e/2026-11-06-pr4-review.md)
+verified identity, real SSH login/revocation, external ConfigDrive local seeds,
+SCM cancellation, and MSI installation/upgrade without restarting the guest.
 
 ## Security
 
@@ -217,9 +228,10 @@ The service may require LocalSystem privileges for provisioning work. NoCloud an
 media, metadata, configuration, and future external plugins must all be treated
 as untrusted. NoCloud consumes `instance-id` and optional `local-hostname`;
 ConfigDrive consumes `uuid` and optional `hostname`. Neither opens or executes user-data. External
-plugin execution is intentionally absent until identity, checksum, protocol
-negotiation, least-privilege execution, deadlines, cancellation, and
-secret-redaction controls are designed and reviewed.
+ConfigDrive execution requires an explicitly selected reviewed image, pinned
+checksum, version/identity negotiation, restricted process launch, deadlines,
+cancellation, and output redaction. The [experimental process protocol](docs/external-plugins.md)
+supports trusted ConfigDrive binaries; it is not a hostile-code sandbox.
 
 Read [SECURITY.md](SECURITY.md) and [Security model](docs/security.md) before
 working on state, diagnostics, metadata, user-data, or plugins.

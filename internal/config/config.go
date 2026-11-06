@@ -11,6 +11,8 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/randomtoy/wininit/internal/identity"
+	"github.com/randomtoy/wininit/internal/pluginprocess"
 	"gopkg.in/yaml.v3"
 )
 
@@ -41,9 +43,14 @@ type PluginConfig struct {
 
 type DatasourceConfig struct {
 	NoCloud     LocalDatasourceConfig `yaml:"nocloud" json:"nocloud"`
-	ConfigDrive LocalDatasourceConfig `yaml:"configdrive" json:"configdrive"`
+	ConfigDrive ConfigDriveConfig     `yaml:"configdrive" json:"configdrive"`
 }
 
+type ConfigDriveConfig struct {
+	LocalDatasourceConfig `yaml:",inline"`
+	Execution             string                 `yaml:"execution" json:"execution"`
+	Process               pluginprocess.Settings `yaml:"process" json:"process"`
+}
 type LocalDatasourceConfig struct {
 	Enabled         bool   `yaml:"enabled" json:"enabled"`
 	SeedDirectory   string `yaml:"seed_directory" json:"seed_directory"`
@@ -51,9 +58,24 @@ type LocalDatasourceConfig struct {
 }
 
 type ProvisionerConfig struct {
-	Hostname ToggleConfig `yaml:"hostname" json:"hostname"`
+	Hostname       ToggleConfig         `yaml:"hostname" json:"hostname"`
+	LocalUsers     LocalUsersConfig     `yaml:"local_users" json:"local_users"`
+	PasswordPolicy PasswordPolicyConfig `yaml:"password_policy" json:"password_policy"`
+	AuthorizedKeys AuthorizedKeysConfig `yaml:"authorized_keys" json:"authorized_keys"`
 }
 
+type LocalUsersConfig struct {
+	Enabled bool            `yaml:"enabled" json:"enabled"`
+	Users   []identity.User `yaml:"users" json:"users"`
+}
+type PasswordPolicyConfig struct {
+	Enabled                 bool `yaml:"enabled" json:"enabled"`
+	identity.PasswordPolicy `yaml:",inline"`
+}
+type AuthorizedKeysConfig struct {
+	Enabled bool               `yaml:"enabled" json:"enabled"`
+	Users   []identity.KeyUser `yaml:"users" json:"users"`
+}
 type ToggleConfig struct {
 	Enabled bool `yaml:"enabled" json:"enabled"`
 }
@@ -80,8 +102,9 @@ func Default() Config {
 			Directory: filepath.Join(programData, "wininit", "plugins"),
 			Datasources: DatasourceConfig{
 				NoCloud:     LocalDatasourceConfig{DiscoverVolumes: true},
-				ConfigDrive: LocalDatasourceConfig{DiscoverVolumes: true},
+				ConfigDrive: ConfigDriveConfig{LocalDatasourceConfig: LocalDatasourceConfig{DiscoverVolumes: true}, Execution: "builtin", Process: pluginprocess.Settings{TimeoutSeconds: 15}},
 			},
+			Provisioners: ProvisionerConfig{PasswordPolicy: PasswordPolicyConfig{PasswordPolicy: identity.DefaultPasswordPolicy()}},
 		},
 		Reboot: RebootConfig{Policy: "never"},
 	}
@@ -172,7 +195,7 @@ func (c Config) Validate() error {
 	for _, entry := range []struct {
 		name   string
 		source LocalDatasourceConfig
-	}{{"nocloud", c.Plugins.Datasources.NoCloud}, {"configdrive", c.Plugins.Datasources.ConfigDrive}} {
+	}{{"nocloud", c.Plugins.Datasources.NoCloud}, {"configdrive", c.Plugins.Datasources.ConfigDrive.LocalDatasourceConfig}} {
 		name, source := entry.name, entry.source
 		if source.Enabled {
 			if source.SeedDirectory == "" && !source.DiscoverVolumes {
@@ -186,13 +209,40 @@ func (c Config) Validate() error {
 			}
 		}
 	}
+	if c.Plugins.Datasources.ConfigDrive.Enabled {
+		switch c.Plugins.Datasources.ConfigDrive.Execution {
+		case "builtin":
+		case "external":
+			errs = append(errs, c.Plugins.Datasources.ConfigDrive.Process.Validate())
+		default:
+			errs = append(errs, errors.New("configdrive.execution must be builtin or external"))
+		}
+	}
 	if c.Reboot.Policy != "never" {
 		errs = append(errs, errors.New(`reboot.policy must be "never" until reboot orchestration is implemented`))
+	}
+	if c.Plugins.Provisioners.LocalUsers.Enabled {
+		errs = append(errs, identity.ValidateUsers(c.Plugins.Provisioners.LocalUsers.Users))
+		for _, user := range c.Plugins.Provisioners.LocalUsers.Users {
+			relative, err := filepath.Rel(c.Log.Directory, user.PasswordFile)
+			if user.PasswordFile != "" && err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+				errs = append(errs, errors.New("local_users password_file must be outside log.directory"))
+			}
+		}
+	}
+	if c.Plugins.Provisioners.PasswordPolicy.Enabled {
+		errs = append(errs, c.Plugins.Provisioners.PasswordPolicy.PasswordPolicy.Validate())
+	}
+	if c.Plugins.Provisioners.AuthorizedKeys.Enabled {
+		errs = append(errs, identity.ValidateKeyUsers(c.Plugins.Provisioners.AuthorizedKeys.Users))
 	}
 	return errors.Join(errs...)
 }
 
 // Sanitized is an explicit allowlist for diagnostic output.
 func (c Config) Sanitized() Config {
-	return Config{Version: c.Version, Log: c.Log, State: c.State, Plugins: c.Plugins, Reboot: c.Reboot}
+	safe := c
+	safe.Plugins.Provisioners.LocalUsers.Users = nil
+	safe.Plugins.Provisioners.AuthorizedKeys.Users = nil
+	return safe
 }

@@ -34,8 +34,11 @@ func TestInstallerDefaultPluginsAreExplicitlyDisabled(t *testing.T) {
 	if cfg.Plugins.Provisioners.Hostname.Enabled {
 		t.Fatal("installer default enabled the hostname provisioner")
 	}
+	if cfg.Plugins.Provisioners.LocalUsers.Enabled || cfg.Plugins.Provisioners.PasswordPolicy.Enabled || cfg.Plugins.Provisioners.AuthorizedKeys.Enabled {
+		t.Fatal("installer default enabled identity provisioning")
+	}
 	configDrive := cfg.Plugins.Datasources.ConfigDrive
-	if configDrive.Enabled || configDrive.SeedDirectory != "" || !configDrive.DiscoverVolumes {
+	if configDrive.Enabled || configDrive.SeedDirectory != "" || !configDrive.DiscoverVolumes || configDrive.Execution != "builtin" || configDrive.Process.Executable != "" || configDrive.Process.SHA256 != "" {
 		t.Fatalf("unsafe ConfigDrive installer defaults: %#v", configDrive)
 	}
 	if cfg.Plugins.Directory == "" {

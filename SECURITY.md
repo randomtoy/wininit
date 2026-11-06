@@ -26,12 +26,14 @@ a stable maintainer and release process.
 
 - MVP artifacts are unsigned.
 - The service may run with elevated Windows privileges.
-- No external plugin execution is implemented in the foundation.
-- NoCloud, OpenStack ConfigDrive, and hostname provisioning are independent
-  built-in plugins, all disabled by default. Datasources use local seeds or
-  supported labelled media; hostname mutation rejects domain-joined machines.
-- User-data is never opened or executed. Additional provisioners,
-  and external executable plugins remain future trust boundaries.
+- All six logical datasource/provisioner plugins are independently disabled
+  by default. Local identity management refuses domain/admin accounts and
+  reads protected initial passwords only when creating absent users.
+- Optional external ConfigDrive uses pinned reviewed binaries, mTLS,
+  restricted Windows tokens and Job Objects. It is not a hostile-code sandbox;
+  filesystem reads and outbound network access are not completely OS-isolated.
+- User-data is never opened or executed. Arbitrary third-party plugins and
+  external privileged provisioners remain future trust boundaries.
 - Diagnostic archives are intended to contain only allowlisted, sanitized
   information, but reporters should inspect an archive before sharing it.
 

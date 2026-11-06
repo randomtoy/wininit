@@ -1,12 +1,13 @@
-# Built-in plugins
+# Plugins
 
 ## Safety model
 
 `wininit` includes a small internal plugin pipeline for built-in datasources and
-provisioners. These are ordinary packages compiled into `wininit.exe`; they are
-not external executables, do not use gRPC, and are not a public plugin SDK.
+provisioners. Implementations are compiled packages by default. ConfigDrive
+can explicitly select a separate verified EXE using the experimental v1
+protobuf/gRPC SDK; see [external plugins](external-plugins.md).
 
-Every plugin is independently opt-in. All three built-ins are disabled by default,
+Every plugin is independently opt-in. All six logical plugins are disabled by default,
 including for configuration files created before these fields existed. The
 pipeline executes enabled plugins only. Disabling a plugin in the current
 configuration takes priority over any pending plugin or reboot checkpoint in
@@ -34,13 +35,34 @@ plugins:
       enabled: false
       seed_directory: ''
       discover_volumes: true
+      execution: builtin
+      process:
+        executable: ''
+        sha256: ''
+        timeout_seconds: 15
   provisioners:
     hostname:
       enabled: false
+    password_policy:
+      enabled: false
+      minimum_length: 14
+      maximum_age_days: 90
+      minimum_age_days: 1
+      history_length: 24
+      lockout_threshold: 10
+      lockout_duration_minutes: 15
+      lockout_window_minutes: 15
+    local_users:
+      enabled: false
+      users: []
+    authorized_keys:
+      enabled: false
+      users: []
 ```
 
-The `plugins.directory` field is reserved for the deferred external plugin
-design. Setting that path does not enable or load an executable.
+The `plugins.directory` field remains reserved and is never scanned. Setting
+that path does not enable or load an executable. External ConfigDrive requires
+an explicit image path, SHA-256 pin, and execution mode.
 
 ### Use an explicit seed directory and hostname provisioning
 
@@ -86,6 +108,9 @@ checkpoint remains pending while other enabled datasource candidates have not
 yet returned unavailable.
 
 ### Disable all provisioning behavior
+
+All identity plugins must also retain `enabled: false`; the example below
+uses their disabled defaults by omitting their sections.
 
 ```yaml
 version: 1
@@ -202,6 +227,11 @@ a different instance is selected.
 
 ## Hostname provisioner
 
+The independently gated `password_policy`, `local_users`, and
+`authorized_keys` provisioners run before hostname when enabled. Their complete
+configuration, password handling, rerun/revocation rules, and Windows limits
+are documented in [Identity and access](identity.md). Defaults are disabled.
+
 Hostname provisioning is independently disabled by default. When enabled and a
 `local-hostname` is present, the provisioner accepts only a conservative
 Windows host label:
@@ -281,6 +311,7 @@ as the datasource type. They must not include raw metadata files or user-data.
 
 ## External plugins
 
-External executable plugins, the versioned protobuf/gRPC API, and the Go SDK
-remain deferred. See [ADR 0006](adr/0006-external-plugin-direction.md). No file
-placed in `plugins.directory` is executed by this milestone.
+The optional [external ConfigDrive](external-plugins.md) is the first
+experimental executable plugin. It stays in this repository as a separate
+EXE and versioned SDK surface. Broader third-party plugins, external
+provisioners, registries/downloads, and a stable general SDK remain deferred.

@@ -5,10 +5,15 @@ non-domain-joined Windows Server 2022 or 2025 AMD64 VM. Hosted CI does not run a
 real rename or reboot. Do not run this procedure on a workstation, production
 VM, domain member, or shared CI host.
 
+The [2026-11-06 PR 4 guest review](2026-11-06-pr4-review.md) separately records
+identity/access, existing OpenSSH login, external ConfigDrive local-seed, SCM,
+and MSI checks. It did not run this rename/reboot procedure; restart was not
+authorized.
+
 ## Prepare
 
 1. Take a VM snapshot and install the candidate MSI with verbose logging.
-2. Record the original active hostname and verify all three plugins are disabled in
+2. Record the original active hostname and verify all six logical plugins are disabled in
    `wininit.exe status --json`.
 3. Copy `tests/fixtures/nocloud/meta-data` to a local seed directory in the VM,
    or attach a FAT/ISO9660 volume labelled `CIDATA` with `meta-data` at its root.

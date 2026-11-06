@@ -12,7 +12,7 @@
 Go and documentation work can be done on Windows, Linux, or macOS. A successful
 Windows cross-build does not replace native Windows testing.
 
-The built-in NoCloud, ConfigDrive, and hostname packages are independently testable behind
+The datasource, hostname, and identity packages are independently testable behind
 small internal interfaces. Tests must cover default-disabled and explicitly
 disabled behavior, including a state checkpoint from an older enabled run.
 Configuration tests must prove that older version 1 files keep newly introduced
@@ -53,14 +53,16 @@ go test ./plugins/datasource/configdrive -run '^$' -fuzz '^FuzzParse$' -fuzztime
 Datasource tests cover missing, malformed, duplicate, oversized, and symlinked
 metadata; dated-version selection; FQDN normalization; source ambiguity; and
 disabled execution. Windows tests enumerate labels without mounting media or
-changing a hostname. MSI smoke verifies all three built-ins remain disabled.
+changing a hostname. MSI smoke verifies all six logical plugins remain
+disabled and installed ProgramData/configuration DACLs are protected.
 
-`make build` produces `dist/wininit-windows-amd64.exe`. `make package` is the
-release-style Windows target and produces the executable, MSI, and
+`make build` produces `dist/wininit-windows-amd64.exe` and the separate
+`dist/wininit-plugin-configdrive-windows-amd64.exe`. `make package` is the
+release-style Windows target and produces both executables, MSI, and
 `SHA256SUMS`. Consult the build script output if the local WiX dependency is
 missing or has the wrong version.
 
-Packaging also verifies that `SHA256SUMS` matches both artifacts and uses
+Packaging also verifies that `SHA256SUMS` matches all three artifacts and uses
 portable LF line endings.
 
 The WiX project contains `<AcceptEula>wix7</AcceptEula>`, the acknowledgement
@@ -82,6 +84,28 @@ Stop foreground mode with Ctrl+C. The same root-context cancellation path is
 used by SCM stop and shutdown controls.
 
 ## Native Windows integration tests
+
+Identity integration tests create a uniquely named standard local account and
+profile and delete both, verify password preservation and SSH ACL/rerun/
+revocation, reject unsafe paths/secret ACLs, and round-trip SAM policy with exact
+raw restoration in cleanup. Run `go test -tags=integration ./...` only on an
+elevated disposable Windows host. Standard process tests execute real helper
+binaries, including native token/job restrictions; they require elevation on
+Windows. Portable process tests validate lifecycle/RPC behavior without
+claiming Windows isolation.
+
+The protobuf sources/generated Go files are checked in. To regenerate with
+protoc 33.4 and pinned generators:
+
+```sh
+go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12
+go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.0
+protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative sdk/datasource/v1/datasource.proto
+```
+
+Ensure the Go binary directory is on PATH. Keep wire changes compatible within
+v1 or introduce another version. [External plugins](external-plugins.md)
+describes the contract and trust limits.
 
 Registry tests create a unique key beneath a dedicated test-only subtree and
 delete it during cleanup. The current SCM lifecycle is exercised by the MSI

@@ -8,9 +8,11 @@ consists of one Windows Service/CLI executable, a lifecycle pipeline, versioned
 configuration, Registry-backed persistent state, diagnostics, Windows
 packaging, and CI.
 
-The current scope includes built-in NoCloud and OpenStack ConfigDrive
-datasources and a Windows hostname provisioner. All three plugins are
-independently opt-in and disabled by default. Do not claim that a VM was provisioned merely because the
+The current scope includes NoCloud and ConfigDrive datasources plus hostname,
+password_policy, local_users, and authorized_keys provisioners. All six logical
+plugins are independently opt-in and disabled by default. ConfigDrive can
+explicitly use a separate verified EXE; builtin mode remains the compatible
+default. Do not claim that a VM was provisioned merely because the
 service started, metadata was found, or a reboot checkpoint was saved.
 
 ## Mandatory maintenance rule
@@ -38,13 +40,16 @@ conventions must update this file in the same change.
   perform no I/O. Invoke `Discover` or `Apply` only when that plugin is enabled
   by current configuration. Configuration disablement always wins over old
   persistent checkpoints.
-- Do not expose a public plugin protocol until its lifecycle and threat model
-  are stable.
+- The experimental datasource v1 SDK supports reviewed ConfigDrive processes
+  only. Do not imply a stable general protocol, hostile-code sandbox, external
+  provisioner support, or automatic plugin distribution.
 
 ## Directory structure
 
 ```text
 cmd/wininit/              executable entry point
+cmd/wininit-plugin-configdrive/ separate process plugin entry point
+sdk/datasource/v1/        experimental protobuf/gRPC process contract
 internal/app/             composition and command execution
 internal/config/          versioned configuration and validation
 internal/diagnostics/     sanitized diagnostic archive creation
@@ -105,6 +110,11 @@ an automated command and remains unexecuted until an appropriate VM is
 available. Never claim rename, restart, or resume validation without recording
 an actual run of that procedure.
 
+`tests/e2e/2026-11-06-pr4-review.md` records a narrower Windows Server 2025 SSH
+guest run for identity/access, local-seed external ConfigDrive, SCM, and MSI.
+No restart was authorized or run. SSH access-group setup is an administrator
+precondition outside wininit; do not imply the plugin manages groups or sshd.
+
 ## Configuration rules
 
 - Configuration has an explicit schema version. Reject unsupported versions
@@ -115,7 +125,7 @@ an actual run of that procedure.
 - The version 1 schema remains backward compatible. Missing built-in plugin
   fields mean disabled; never infer enablement from old state or installed
   files.
-- NoCloud, ConfigDrive, and hostname enablement are independent. A single global plugin flag
+- All datasource/provisioner enablement flags are independent. A single global plugin flag
   is not an acceptable substitute.
 - `state.registry_path` must name a non-empty, dedicated subkey below
   `HKLM\SOFTWARE`. Never accept the `SOFTWARE` root or a shared broad parent as
@@ -142,8 +152,10 @@ an actual run of that procedure.
   checkpoint.
 - `RegFlushKey` is expensive and system-wide at the hive level. Keep state saves
   at low-frequency lifecycle/plugin boundaries; never add a polling save loop.
-- Store only the normalized plugin input SHA-256, not a raw hostname or metadata
-  target, in plugin checkpoints.
+- Keep the selected instance ID in aggregate lifecycle state. Plugin input
+  checkpoints store only SHA-256 of instance, metadata, plugin name, and
+  configuration fingerprint. Never store raw targets, passwords, or password
+  hashes. Redact complete identity lists from diagnostic configuration.
 - State-store implementations own the monotonically increasing checkpoint
   generation; callers must not choose or decrement it.
 - Preserve enough error metadata for diagnosis without storing untrusted or
@@ -217,18 +229,88 @@ an actual run of that procedure.
 - A changed metadata input is new work. A missing seed after restart reports
   `no_datasource`; never replay a raw target from state.
 
-External executable plugins remain planned, not part of the current API. A
-future external protocol must have:
+## Identity and external process constraints
 
-- an explicit, versioned handshake and protobuf/gRPC contract;
-- plugin identity and checksum verification;
-- bounded execution time and cancellation;
-- deliberate least-privilege process credentials and filesystem access;
-- controlled, redacted logs; and
-- compatibility and deprecation policy.
-
-Never execute an arbitrary plugin with inherited LocalSystem privileges by
-default. `plugins.directory` is reserved and does not authorize execution.
+- Run enabled provisioners in policy, local-user, authorized-key, hostname
+  order after unambiguous datasource selection. Stop at the first failure;
+  completed mutations are not rolled back.
+- Use native APIs for standard local accounts and SAM policy. Refuse
+  domain-joined hosts, built-in, disabled, and administrator accounts. Preserve
+  memberships and existing passwords; only absent users read initial secrets.
+  Clear owned password buffers. Never invoke a shell with credentials.
+- Password files and parent directories require SYSTEM/Administrators ownership
+  and protected access. Reject network drives, streams, hard links, and reparse
+  traversal. Password files must stay outside log.directory.
+  Parent-directory ACL checks must reject FILE_DELETE_CHILD grants to ordinary
+  users as well as DELETE/write grants; a child's DACL cannot negate that right.
+- Native file helpers must request FILE_READ_ATTRIBUTES before validating a
+  handle, including traversal-only directories and write-only replacements.
+  Keep syscall causes without echoing untrusted paths or payloads.
+- Pin directories by denying FILE_SHARE_DELETE while allowing FILE_SHARE_WRITE
+  for Windows rename internals. New replacement files allow delete sharing for
+  handle-relative rename, but deny foreign writes. Verified images/secrets
+  retain exclusive write/delete protection.
+- Protected files/executables must reject ADS, DOS-device names, dot/space
+  aliases, and relative components, so NT verification and Win32 execution
+  identify the same object. Handle-relative opens accept one component only.
+- Password policy is machine-wide, bounded, and independently opt-in. Preserve
+  force-logoff/complexity settings. Native integration tests restore exact raw
+  prior policy even on failure; run them only on a disposable elevated host.
+- SSH keys use SID-resolved profiles, protected target-user/SYSTEM/Admin ACLs,
+  pinned directory handles, no reparse traversal, no hard links, and atomic
+  flushed replacements. Preserve unmanaged bytes; empty key lists revoke only
+  the managed block. Do not install/configure sshd or use shared admin key files.
+  Distinguish an absent authorized_keys file from an existing zero-byte file;
+  revocation must repair unsafe ACLs on an empty file without creating a new
+  file, profile, or .ssh directory when none exists. Cover these cases with
+  native regression tests.
+- Repair the .ssh directory ACL with a handle-only NtSetSecurityObject call;
+  SetSecurityInfo would propagate inheritable ACLs into untrusted hard-linked
+  children. A native regression must prove outside target ACLs stay unchanged.
+- CreateProfile uses a MAX_PATH-sized output buffer; its RPC size constraint
+  is narrower than ordinary Windows long-path filesystem support.
+- External ConfigDrive requires explicit mode/enablement, absolute reviewed
+  image, SHA-256 pin, trusted image/parent ACLs, locked verified image,
+  matching handshake/identity, local mTLS, bounded messages, deadlines across
+  framework calls, cancellation, and cleanup.
+  Pin every path ancestor without delete sharing until process cleanup; locking
+  the image alone does not prevent a Win32 launch path from being redirected
+  by a directory rename. Test ancestor swaps and release on Windows.
+- Windows children retain caller identity but use deny-only Administrators
+  plus ordinary Users/Authenticated Users/Everyone restricting SIDs for a second
+  ACL access check, disabled privileges, low
+  integrity, and a suspended start before assignment to a kill-on-close job
+  limited to one process and 256 MiB. Start without a window and scrub inherited
+  environment/stdin. Omit job UI limits because Windows disallows nesting them
+  inside host jobs. Test actual restrictions on Windows; never bypass failed
+  job assignment.
+- Give each launch a fresh private restricting SID and a matching default
+  object DACL so Windows/runtime-created objects pass both ACL checks without
+  granting object control to all ordinary users.
+- Restricted token handles need TOKEN_ADJUST_DEFAULT for low-integrity setup;
+  validate the actual child token and current job, not just constructor flags.
+- Restricted children use a fresh noninteractive low-integrity window station
+  and desktop, never an inherited host desktop. Serialize the temporary parent
+  window-station switch on a pinned thread and restore it before child creation;
+  the host is headless. Native CreateProcessAsUser specifies this desktop,
+  sorted scrubbed environment, and an explicit three-handle stdio allowlist.
+  Keep the initial thread handle for job assignment before resume. Close UI,
+  token, job, process, thread, pipe, and cancellation resources on every path.
+- CreateDesktop attaches its calling thread. Use a native creator thread and a
+  single cached Go callback; pass no Go pointers as native parameters. Restore
+  the process station and join the native thread before returning handles.
+  Keep request state in an atomic Go reference under the creation mutex.
+  Never return a UI-affiliated thread to Go's pool or try to retire its initial
+  runtime thread.
+- These are reviewed trusted-code plugins, not an AppContainer sandbox.
+  Outbound networking and filesystem reads are not completely OS-isolated.
+  Do not claim otherwise or enable arbitrary unreviewed code. Protocol endpoints
+  are local; the reviewed ConfigDrive implementation makes no network requests.
+- Discard child stdout/stderr and remote error payloads. No secret file paths,
+  key lists, Registry handles, or provisioning requests go to the child.
+- Keep the first plugin/experimental SDK in this repo with separate EXE and
+  checksum artifacts. Builtin ConfigDrive remains for old v1 files; external
+  failure must never fall back to it. plugins.directory is not scanned.
 
 ## Security constraints
 
@@ -271,6 +353,12 @@ default. `plugins.directory` is reserved and does not authorize execution.
 - Treat lifecycle termination as a clean cancellation only when the returned
   error's cause is the root context cancellation. Do not swallow an unrelated
   failure merely because the root context is also done.
+- Reuse an equal/earlier RPC parent deadline rather than installing a competing
+  timer. The host owns deadline timing; RPC contexts forward Done/Err without
+  grpc-timeout so a rounded remote timer cannot win the race. The SDK retains
+  its independent provider upper bound. An early remote DeadlineExceeded stays
+  a provider failure, not host cancellation. Report only fixed RPC status
+  codes, never remote error payloads.
 
 ## Packaging rules
 
@@ -286,9 +374,11 @@ default. `plugins.directory` is reserved and does not authorize execution.
   endings so standard Windows and Unix verification tools agree.
 - Preserve operational state and administrator-owned configuration through
   upgrades and ordinary uninstall.
-- ProgramData currently inherits Windows Installer-created system ACLs;
-  explicitly review and harden ACLs before adding external plugins or unprivileged
-  writers.
+- MSI-created ProgramData root/log/plugin directories and configuration use
+  protected SYSTEM/Administrators ACLs. Preserve configuration contents across
+  upgrades. Test actual installed DACLs; do not infer protection from XML.
+- Build/distribute the optional ConfigDrive EXE separately; MSI installs only
+  the agent. SHA256SUMS and CI/release artifacts include all three binaries.
 - Do not add the install directory to the machine-wide `PATH`.
 - Unsigned artifacts are acceptable only while the MVP documentation states
   this limitation. Never describe unsigned artifacts as trusted.
@@ -301,6 +391,12 @@ default. `plugins.directory` is reserved and does not authorize execution.
   It must check elevation explicitly before tests which require SCM or MSI
   administration and report the documented outcome; it must not fabricate a
   successful smoke test.
+- Run isolated integration tests even when native unit tests fail, to surface
+  independent account/ACL/policy failures. Keep the original unit failure fatal.
+  CI and release use separate native-command steps so PowerShell cannot mask an
+  earlier verification/test failure behind a successful final command.
+- Process startup diagnostics may report fixed stages and numeric OS/exit
+  codes; never expose raw child handshake, stderr, or RPC error contents.
 - Stage failure logs from ProgramData into the workspace artifact directory
   before upload; Windows artifacts cannot share a root across different drives.
 - Keep structured startup milestones around lock acquisition and the first

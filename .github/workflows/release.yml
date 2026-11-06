@@ -71,11 +71,14 @@ jobs:
           if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
             throw 'The release job requires administrator privileges for isolated HKLM, SCM, and MSI tests.'
           }
+      - name: Verify dependencies
+        run: go mod verify
       - name: Run Windows tests
-        run: |
-          go mod verify
-          go test ./...
-          go test -tags=integration ./...
+        id: windows-unit
+        run: go test ./...
+      - name: Run isolated Windows integration tests
+        if: success() || steps.windows-unit.outcome == 'failure'
+        run: go test -tags=integration ./...
       - name: Build signed-version metadata and unsigned packages
         id: package
         shell: pwsh
@@ -125,6 +128,7 @@ jobs:
           path: |
             dist/wininit-windows-amd64.exe
             dist/wininit-windows-amd64.msi
+            dist/wininit-plugin-configdrive-windows-amd64.exe
             dist/SHA256SUMS
           if-no-files-found: error
           retention-days: 30
@@ -150,6 +154,7 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             dist/wininit-windows-amd64.exe \
             dist/wininit-windows-amd64.msi \
+            dist/wininit-plugin-configdrive-windows-amd64.exe \
             dist/SHA256SUMS \
             --verify-tag \
             --title "$GITHUB_REF_NAME" \

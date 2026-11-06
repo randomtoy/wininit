@@ -19,6 +19,10 @@ ldflags="-s -w -buildid= -X=github.com/randomtoy/wininit/internal/version.Versio
         -ldflags "$ldflags" \
         -o "$dist_dir/wininit-windows-amd64.exe" \
         ./cmd/wininit
+    CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build \
+        -trimpath -buildvcs=true -ldflags "$ldflags" \
+        -o "$dist_dir/wininit-plugin-configdrive-windows-amd64.exe" \
+        ./cmd/wininit-plugin-configdrive
 )
 
 printf 'Built %s\n' "$dist_dir/wininit-windows-amd64.exe"

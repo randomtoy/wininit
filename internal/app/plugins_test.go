@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/randomtoy/wininit/internal/config"
+	"github.com/randomtoy/wininit/internal/pluginprocess"
 	"github.com/randomtoy/wininit/internal/state"
 )
 
@@ -14,7 +15,7 @@ func TestDefaultPluginStatusAndConfigurationFingerprint(t *testing.T) {
 		t.Fatal("default configuration permits provisioning")
 	}
 	descriptors := configuredPlugins(cfg).Descriptors()
-	if len(descriptors) != 3 {
+	if len(descriptors) != 6 {
 		t.Fatalf("descriptors=%#v", descriptors)
 	}
 	for _, descriptor := range descriptors {
@@ -26,6 +27,44 @@ func TestDefaultPluginStatusAndConfigurationFingerprint(t *testing.T) {
 	cfg.Plugins.Provisioners.Hostname.Enabled = true
 	if pluginConfigurationHash(cfg) == old {
 		t.Fatal("plugin enablement did not invalidate old runtime status")
+	}
+}
+
+func TestIdentityEnablementOrderAndExternalConstruction(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	cfg.Plugins.Datasources.ConfigDrive.Execution = "external"
+	cfg.Plugins.Datasources.ConfigDrive.Process.Executable = "/absent/plugin.exe"
+	catalog := configuredPlugins(cfg)
+	if _, ok := catalog.Datasources[1].Plugin.(*pluginprocess.ConfigDrive); !ok {
+		t.Fatal("external ConfigDrive mode retained the built-in implementation")
+	}
+	want := []string{"password_policy", "local_users", "authorized_keys", "hostname"}
+	for index, registration := range catalog.Provisioners {
+		if registration.Plugin.Name() != want[index] || registration.Enabled {
+			t.Fatalf("unsafe provisioner order/gate: %#v", registration)
+		}
+	}
+	for _, name := range want[:3] {
+		current := cfg
+		current.Plugins.Provisioners.PasswordPolicy.Enabled = name == "password_policy"
+		current.Plugins.Provisioners.LocalUsers.Enabled = name == "local_users"
+		current.Plugins.Provisioners.AuthorizedKeys.Enabled = name == "authorized_keys"
+		if configuredProvisioning(current) != "pending" {
+			t.Fatalf("%s enablement ignored", name)
+		}
+		enabled := 0
+		for _, descriptor := range configuredPlugins(current).Descriptors() {
+			if descriptor.Enabled {
+				enabled++
+				if descriptor.Name != name {
+					t.Fatal("independent enablement activated another plugin")
+				}
+			}
+		}
+		if enabled != 1 {
+			t.Fatal("identity plugin has no independent gate")
+		}
 	}
 }
 

@@ -86,8 +86,10 @@ jobs:
       - name: Verify dependencies
         run: go mod verify
       - name: Run Windows tests
+        id: windows-unit
         run: go test ./...
       - name: Run isolated Windows integration tests
+        if: success() || steps.windows-unit.outcome == 'failure'
         run: go test -tags=integration ./...
       - name: Build executable and MSI
         id: package
@@ -130,6 +132,7 @@ jobs:
           path: |
             dist/wininit-windows-amd64.exe
             dist/wininit-windows-amd64.msi
+            dist/wininit-plugin-configdrive-windows-amd64.exe
             dist/SHA256SUMS
           if-no-files-found: error
           retention-days: 14

@@ -5,12 +5,12 @@ import (
 	"archive/zip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/randomtoy/wininit/internal/config"
@@ -25,7 +25,7 @@ type Manifest struct {
 }
 
 // Collect writes a ZIP containing an allowlisted configuration projection,
-// supplied status, a manifest, and regular .log files only.
+// supplied status, a manifest, and the regular wininit.log file only.
 func Collect(ctx context.Context, cfg config.Config, status any, output string) (err error) {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -59,7 +59,11 @@ func Collect(ctx context.Context, cfg config.Config, status any, output string) 
 	if err = addBytes(zw, "config/wininit.sanitized.yaml", sanitized); err != nil {
 		return err
 	}
-	if err = addLogs(ctx, zw, cfg.Log.Directory); err != nil {
+	secrets := make([]string, 0, len(cfg.Plugins.Provisioners.LocalUsers.Users))
+	for _, user := range cfg.Plugins.Provisioners.LocalUsers.Users {
+		secrets = append(secrets, user.PasswordFile)
+	}
+	if err = addLogs(ctx, zw, cfg.Log.Directory, secrets); err != nil {
 		return err
 	}
 	if err = zw.Close(); err != nil {
@@ -101,7 +105,7 @@ func addBytes(zw *zip.Writer, name string, data []byte) error {
 	return nil
 }
 
-func addLogs(ctx context.Context, zw *zip.Writer, directory string) error {
+func addLogs(ctx context.Context, zw *zip.Writer, directory string, secrets []string) error {
 	entries, err := os.ReadDir(directory)
 	if os.IsNotExist(err) {
 		return nil
@@ -114,7 +118,7 @@ func addLogs(ctx context.Context, zw *zip.Writer, directory string) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if entry.Type()&os.ModeSymlink != 0 || entry.IsDir() || !strings.HasSuffix(strings.ToLower(entry.Name()), ".log") {
+		if entry.Type()&os.ModeSymlink != 0 || entry.IsDir() || entry.Name() != "wininit.log" {
 			continue
 		}
 		info, err := entry.Info()
@@ -124,6 +128,23 @@ func addLogs(ctx context.Context, zw *zip.Writer, directory string) error {
 		file, err := os.Open(filepath.Join(directory, entry.Name()))
 		if err != nil {
 			return fmt.Errorf("open log %s: %w", entry.Name(), err)
+		}
+		opened, err := file.Stat()
+		if err != nil {
+			file.Close()
+			return errors.New("inspect agent log failed")
+		}
+		secretFile := false
+		for _, path := range secrets {
+			secret, err := os.Stat(path)
+			if err == nil && os.SameFile(opened, secret) {
+				secretFile = true
+				break
+			}
+		}
+		if secretFile {
+			file.Close()
+			continue
 		}
 		w, err := zw.CreateHeader(&zip.FileHeader{Name: "logs/" + entry.Name(), Method: zip.Deflate})
 		if err == nil {

@@ -4,9 +4,9 @@
 
 The agent provides a Windows Service/CLI process, configuration, lifecycle
 state, diagnostics, and an internal opt-in plugin pipeline. The current pipeline
-contains NoCloud and OpenStack ConfigDrive datasources and a Windows hostname provisioner. The
-architecture separates those responsibilities without committing to an
-external or public plugin interface.
+contains NoCloud/ConfigDrive datasources and hostname, password policy, local
+user, and authorized-key provisioners. ConfigDrive may explicitly run in a
+separate process using the experimental datasource v1 SDK.
 
 ## Component view
 
@@ -24,11 +24,15 @@ Windows SCM / command-line user
    +-- NoCloud      Registry  memory tests
    +-- ConfigDrive
    +-- hostname
+   +-- password_policy / local_users / authorized_keys
+   +-- ConfigDrive process adapter -- mTLS/gRPC -- separate ConfigDrive EXE
 ```
 
-NoCloud, ConfigDrive, and hostname are built-in implementation packages, not external
-processes. The external executable manager and protobuf/gRPC protocol remain
-future components and must not be inferred from the diagram.
+Internal interfaces remain private to lifecycle composition. The experimental
+wire surface lives separately in `sdk/datasource/v1` and does not expose
+Registry access or provisioner operations. The first plugin stays in this
+repository with a separate executable artifact; [ADR 0012](adr/0012-process-configdrive.md)
+records the repository and trusted-process boundary.
 
 ## Process modes
 
@@ -89,6 +93,13 @@ nothing idempotently, refuses the mutation, or requests the Windows rename.
 This reconciliation runs once per process start. A failure is retried only on a
 later service/process start; the lifecycle engine does not automatically retry
 or poll.
+
+Enabled provisioners run in password-policy, local-user, SSH-key, hostname
+order. Identity inputs are administrator-owned configuration, not metadata.
+Adapters perform native Windows calls and protected handle-relative file
+updates. A mutation is preceded by a durable running checkpoint. Input hashes
+include the configuration fingerprint as well as instance/metadata identity.
+See [identity](identity.md) and [external process lifecycle](external-plugins.md).
 
 ## Configuration
 
