@@ -37,7 +37,7 @@ func TestWindowsActualPowerShellExecution(t *testing.T) {
 		exit       uint32
 		failure    string
 	}{
-		{"success", `if('ж' -cne [string][char]0x0436){exit 18}; if([Environment]::CommandLine.Contains('fixture-private')){exit 19}; if($env:PATHEXT -cne '.COM;.EXE;.BAT;.CMD'){exit 20}; if($env:ComSpec -ine "$env:SystemRoot\System32\cmd.exe"){exit 21}; if(Test-Path Env:\WININIT_TEST_SECRET){exit 22}; [Console]::Write('fixture-private'); exit 0`, 0, ""},
+		{"success", `if('ж' -cne [string][char]0x0436){exit 18}; if([Environment]::CommandLine.Contains('fixture-private')){exit 19}; if($env:PATHEXT -ine '.COM;.EXE;.BAT;.CMD' -and $env:PATHEXT -ine '.COM;.EXE;.BAT;.CMD;.CPL'){exit 20}; if($env:ComSpec -ine "$env:SystemRoot\System32\cmd.exe"){exit 21}; if(Test-Path Env:\WININIT_TEST_SECRET){exit 22}; [Console]::Write('fixture-private'); exit 0`, 0, ""},
 		{"terminating-error", `throw 'fixture-private'`, 1, "exit code"},
 		{"native-error", `& "$env:SystemRoot\System32\cmd.exe" /d /c exit 23`, 23, "exit code"},
 		{"native-exe-error", `& '` + strings.ReplaceAll(native.Executable, "'", "''") + `'`, 23, "exit code"},

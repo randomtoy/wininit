@@ -124,3 +124,7 @@ not need a rename, local-account/password changes, or OpenSSH reconfiguration.
 
 Record actual runs separately with their scope and limitations. A cross-build,
 hosted runner or simulated boot transition is not a guest reboot acceptance run.
+
+The [2026-11-06 PowerShell run](2026-11-06-powershell-user-data.md) records
+LocalSystem local-seed acceptance with an explicitly authorized real reboot.
+It does not execute the hostname-rename procedure above.

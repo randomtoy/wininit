@@ -70,7 +70,11 @@ durable one-shot journal. Failed/unknown executions require a new execution ID;
 exit 3010 requests a reboot without restarting Windows. See
 [PowerShell user-data](powershell-user-data.md) and ADR 0013.
 
-Actual reboot/resume and Windows Server 2022 remain pending.
+[Guest acceptance](../tests/e2e/2026-11-06-powershell-user-data.md) verified
+LocalSystem execution with both local-seed sources, bounded failures, SCM
+cancellation, replay protection, and actual administrator reboot/resume on
+Windows Server 2025. Windows Server 2022 and attached-media/cloud matrices
+remain pending.
 
 Exit criteria: threat model and administrative controls are documented and
 malicious-input tests cover command, path, and output boundaries.

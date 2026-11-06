@@ -10,7 +10,8 @@ The next roadmap stage needs PowerShell user-data as an independently disabled
 plugin, shipped separately from the main package. Arbitrary metadata must not
 silently become LocalSystem code. The administrator explicitly approved exact
 script SHA-256 pins and a new execution ID to authorize retry after failure or
-interruption. The available Windows guest must not be rebooted during testing.
+interruption. Initial guest authorization excluded reboot. The administrator later supplied
+a replacement guest and explicitly authorized one reboot for acceptance.
 
 ## Decision
 
@@ -59,8 +60,10 @@ in the [operator policy](../powershell-user-data.md).
 
 Portable tests cover parsing, source binding, redaction, wire validation and
 journal decisions. Native Windows tests cover the actual interpreter, job,
-token, cancellation, output and boot-marker boundaries. Guest testing excludes
-reboot; actual kernel-boot/resume validation stays pending.
+token, cancellation, output and boot-marker boundaries. The initial guest test excluded reboot. After explicit administrator
+authorization for a replacement guest, actual kernel boot/resume passed on
+Windows Server 2025; see the [acceptance record](../../tests/e2e/2026-11-06-powershell-user-data.md).
+Windows Server 2022 and the broader media/cloud matrix remain pending.
 
 ## Alternatives considered
 

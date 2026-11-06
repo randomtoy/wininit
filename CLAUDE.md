@@ -484,3 +484,13 @@ and native System32 ComSpec as well as fixed PATH/SystemRoot. Windows PowerShell
 5.1 needs native executable classification to wait and preserve exit codes;
 never inherit these values from the launching user. Verify cmd.exe and a real
 standalone EXE returning a nonzero code under the actual privileged job.
+
+Windows PowerShell 5.1 appends .CPL to its process PATHEXT during startup.
+Native environment tests allow that OS addition while rejecting inherited
+extensions/ComSpec and verifying actual native exit-code behavior.
+
+`tests/e2e/2026-11-06-powershell-user-data.md` records LocalSystem PowerShell
+acceptance on a replacement Windows Server 2025 guest, including one explicitly
+authorized administrator reboot, unchanged one-shot journal/counter, automatic
+service resume, and cleanup. It does not validate attached media, hostname
+rename, or Server 2022. Guest deployment used the development CLI, not MSI.

@@ -107,8 +107,9 @@ configuration/image changes, hostname, source path or process restarts.
 - Exit 3010 records `reboot_required`. It never triggers an automatic reboot.
   Service restarts leave the request pending. A protected volatile Registry
   boot marker changes only after kernel boot; on a later run with fresh metadata
-  the request clears without executing again. Real reboot validation remains
-  pending; unit tests simulate that boot transition.
+  the request clears without executing again. The boot transition was also verified on a
+  [Windows Server 2025 guest](../tests/e2e/2026-11-06-powershell-user-data.md);
+  unit tests simulate it independently. The broader OS/media matrix is pending.
 - Nonzero exit, timeout, overflow, cancellation, protocol failure or an unknown
   result after a crash consumes the ID. Restarting the service cannot retry it.
   Inspect partial side effects, then choose a **new execution_id** to authorize
@@ -135,7 +136,8 @@ pin is authorization of those exact bytes, not proof they are safe. It retains
 administrative provisioning access. Its job is limited to eight processes and
 512 MiB total/per-process, assigned while suspended, with kill-on-close cleanup,
 a private desktop and scrubbed environment with fixed OS PATH, PATHEXT and
-ComSpec (native System32 cmd.exe). Direct local/remote shutdown
+ComSpec (native System32 cmd.exe). Windows PowerShell may append .CPL to
+PATHEXT during startup. Direct local/remote shutdown
 privileges are removed. Scripts must not request reboots directly; use 3010.
 Approved administrative code can still use services/schedulers or other
 privileged mechanisms outside the job. This is not a hostile-script sandbox.

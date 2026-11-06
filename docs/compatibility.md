@@ -8,7 +8,7 @@ verified by automated tests. A build result is not a compatibility claim.
 | Environment | Architecture | Status |
 | --- | --- | --- |
 | Windows Server 2022 | AMD64 | Product target; real-VM E2E pending |
-| Windows Server 2025 | AMD64 | Identity, SSH, external ConfigDrive local-seed, SCM, and MSI guest checks passed; media/reboot E2E pending |
+| Windows Server 2025 | AMD64 | Identity, SSH, ConfigDrive local-seed, PowerShell execution/boot-resume, SCM and MSI guest checks passed; media/rename matrix pending |
 | GitHub-hosted `windows-2025` runner | AMD64 | Native CI; exact image/build is recorded by workflow logs |
 | Windows on ARM64 | ARM64 | Future compatibility goal; not an MVP release target |
 | Linux/macOS host | AMD64/ARM64 | Development, unit tests, and Windows cross-build only; no Windows runtime support |
@@ -37,7 +37,7 @@ guests. It also does not test the Windows Server 2022 target.
 | Standard local users / initial passwords | Implemented; disabled by default; groups/domain/admin accounts excluded |
 | Local SAM password/lockout policy | Implemented; disabled by default; domain-joined hosts refused |
 | Per-user SSH managed key blocks | Implemented; disabled by default; existing-server login/revocation verified on a 2025 guest; sshd setup unmanaged |
-| PowerShell user-data | Separate opt-in EXE; bounded hash-approved execution; real reboot matrix pending |
+| PowerShell user-data | Separate opt-in EXE; Windows Server 2025 local-seed execution and administrator boot/resume verified; broader matrix pending |
 | Hostname restart checkpoint/reconciliation | Implemented; no automatic restart |
 | External ConfigDrive | Experimental v1 gRPC process; opt-in; trusted binaries only |
 
@@ -62,3 +62,7 @@ The MSI is intended for per-machine unattended installation and upgrade. Code
 signing, provenance, and SBOM publication are release-hardening roadmap items.
 The optional ConfigDrive executable is a separate artifact in the same
 repository and checksum manifest; MSI does not install it automatically.
+
+[PowerShell guest acceptance](../tests/e2e/2026-11-06-powershell-user-data.md)
+records one real administrator reboot/resume separately from the pending
+media-discovery and hostname-rename matrix.

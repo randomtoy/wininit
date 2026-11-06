@@ -225,6 +225,9 @@ end-to-end validation is still pending.
 The narrower [Windows Server 2025 guest review](tests/e2e/2026-11-06-pr4-review.md)
 verified identity, real SSH login/revocation, external ConfigDrive local seeds,
 SCM cancellation, and MSI installation/upgrade without restarting the guest.
+The [PowerShell guest acceptance](tests/e2e/2026-11-06-powershell-user-data.md)
+verified the separate LocalSystem plugin, bounded failures, replay protection,
+and one administrator reboot/resume on Windows Server 2025.
 
 ## Security
 
