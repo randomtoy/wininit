@@ -20,7 +20,8 @@ EXEs were cross-built with Go 1.27.3. Their hashes were compared on the guest:
 
 This run predates PR 5 review hardening of Registry permissions and concurrent
 cancellation. Those follow-up changes are covered by native Windows regression
-and MSI CI; this record describes the earlier guest candidate precisely.
+and MSI CI; the original acceptance below describes the earlier guest candidate
+precisely. The separate review follow-up is recorded at the end.
 
 No prior WinInit service, configuration, installation directory, or state was
 present. The candidate was deployed through the development CLI as an
@@ -101,3 +102,20 @@ This verifies local-seed PowerShell execution and administrator reboot/resume
 on one Windows Server 2025 VM. It does not establish Windows Server 2022,
 attached CIDATA/config-2 discovery, real OpenStack metadata, domain behavior,
 actual hostname rename, hostile-code isolation, or a complete release matrix.
+
+## PR 5 review follow-up
+
+The same guest subsequently ran the native state tests for review commit
+`021f89838a22b292567866768a3dc10940ce4625`, without another reboot or service
+installation. The cross-built test EXE SHA-256 was
+`48decfeb1465134593f4ee8c36b64bc24ac4d8a8c49175426e0d97e389b7babe`.
+
+The pre-fix regression accepted a tampered, valid-checksum journal from an
+ordinary-user-writable state key. The hardened state suite passed: unsafe leaf
+and ancestor ACLs were rejected, trusted legacy state migrated, protected child
+state remained writable below a read-only ancestor, the system CREATOR OWNER
+inheritance template was accepted without accepting real untrusted writers,
+and boot-marker/corrupt/future-checkpoint tests passed. The suite used isolated
+test Registry subtrees; its files and Registry resources were removed afterward.
+Concurrent cancellation and the actual PowerShell process tests are covered by
+the Linux/native Windows CI regressions, not by this narrower guest follow-up.

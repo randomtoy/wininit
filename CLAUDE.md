@@ -505,6 +505,8 @@ Allow the system SOFTWARE key's inheritable CREATOR OWNER placeholder while
 independently validating every actual child owner and mutation ACE; new state
 keys use explicit protected ACLs. Existing ancestors need only read access when
 updating a protected child, not an unnecessary CREATE_SUB_KEY handle right.
+The acceptance record also distinguishes a later state-only review regression
+run on that guest from the earlier LocalSystem service/reboot acceptance.
 
 Lifecycle cancellation must match the root context error. A private PowerShell
 session deadline has a distinct context cause and must retain failed/timeout
