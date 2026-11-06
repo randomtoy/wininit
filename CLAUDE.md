@@ -329,6 +329,8 @@ an actual run of that procedure.
 - Treat lifecycle termination as a clean cancellation only when the returned
   error's cause is the root context cancellation. Do not swallow an unrelated
   failure merely because the root context is also done.
+- Reuse an equal/earlier RPC parent deadline rather than installing a competing
+  timer. Report only fixed RPC status codes, never remote error payloads.
 
 ## Packaging rules
 

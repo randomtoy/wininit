@@ -90,7 +90,15 @@ func (p *ConfigDrive) Discover(parent context.Context) (plugin.Metadata, error) 
 		GRPCDialOptions: []grpc.DialOption{
 			grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(datasourcev1.MaxMessageBytes), grpc.MaxCallSendMsgSize(datasourcev1.MaxMessageBytes)),
 			grpc.WithUnaryInterceptor(func(callCtx context.Context, method string, request, response interface{}, connection *grpc.ClientConn, invoke grpc.UnaryInvoker, options ...grpc.CallOption) error {
-				bounded, cancel := context.WithDeadline(callCtx, deadline(ctx))
+				// Do not add an independent timer at an equal/earlier parent
+				// deadline: it could fire before the parent publishes Err().
+				var bounded context.Context
+				var cancel context.CancelFunc
+				if existing, ok := callCtx.Deadline(); ok && !existing.After(deadline(ctx)) {
+					bounded, cancel = context.WithCancel(callCtx)
+				} else {
+					bounded, cancel = context.WithDeadline(callCtx, deadline(ctx))
+				}
 				stop := context.AfterFunc(ctx, cancel)
 				defer cancel()
 				defer stop()
@@ -161,7 +169,7 @@ func (p *ConfigDrive) Discover(parent context.Context) (plugin.Metadata, error) 
 		if cancelledRPC(ctx, process, err) {
 			return plugin.Metadata{}, ctx.Err()
 		}
-		return plugin.Metadata{}, errors.New("external ConfigDrive discovery failed")
+		return plugin.Metadata{}, fmt.Errorf("external ConfigDrive discovery failed (RPC code %s)", status.Code(err))
 	}
 	if response.GetUnavailable() {
 		if response.GetMetadata() != nil {
