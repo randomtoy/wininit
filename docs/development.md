@@ -12,11 +12,11 @@
 Go and documentation work can be done on Windows, Linux, or macOS. A successful
 Windows cross-build does not replace native Windows testing.
 
-The built-in NoCloud and hostname packages are independently testable behind
+The built-in NoCloud, ConfigDrive, and hostname packages are independently testable behind
 small internal interfaces. Tests must cover default-disabled and explicitly
 disabled behavior, including a state checkpoint from an older enabled run.
-Configuration tests must prove that older version 1 files keep both plugins
-disabled. State tests must cover deterministic schema version 1 to version 2
+Configuration tests must prove that older version 1 files keep newly introduced
+plugins disabled. State tests must cover deterministic schema version 1 to version 2
 migration.
 
 Lifecycle tests must also verify one reconciliation per process start, no
@@ -42,6 +42,18 @@ make lint
 make test
 make build
 ```
+
+ConfigDrive fixture/parser/discovery tests run with the normal suite. A bounded
+parser fuzz check can also run on a development host:
+
+```bash
+go test ./plugins/datasource/configdrive -run '^$' -fuzz '^FuzzParse$' -fuzztime 15s
+```
+
+Datasource tests cover missing, malformed, duplicate, oversized, and symlinked
+metadata; dated-version selection; FQDN normalization; source ambiguity; and
+disabled execution. Windows tests enumerate labels without mounting media or
+changing a hostname. MSI smoke verifies all three built-ins remain disabled.
 
 `make build` produces `dist/wininit-windows-amd64.exe`. `make package` is the
 release-style Windows target and produces the executable, MSI, and
@@ -128,13 +140,13 @@ workflow's uploaded failure diagnostics.
 
 Packer/QEMU or equivalent automation will create ephemeral Windows Server
 2022/2025 test guests from administrator-supplied media. It must validate
-mounted CIDATA discovery, hostname mutation, no automatic restart, an
+mounted CIDATA/config-2 discovery, hostname mutation, no automatic restart, an
 administrator-initiated restart, and active-name reconciliation. This real-VM
 validation is pending; the repository does not claim that a VM restart has been
 performed or tested. The repository must never contain or download
 copyrighted Windows installation media or license keys.
 
-Follow the concrete [NoCloud and hostname VM acceptance procedure](../tests/e2e/README.md)
+Follow the concrete [datasource and hostname VM acceptance procedure](../tests/e2e/README.md)
 only on a disposable, licensed, non-domain-joined test VM. The procedure is
 currently pending and unexecuted because no suitable VM is available. Record
 the OS build, hypervisor, source commit, logs, and every acceptance result when

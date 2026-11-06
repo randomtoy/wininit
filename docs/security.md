@@ -16,12 +16,14 @@ cloud platform:
 
 The built-in NoCloud datasource reads only required `instance-id` and optional
 `local-hostname` from an explicitly selected seed directory or an unambiguous
-mounted `CIDATA` volume. It never opens or executes `user-data`. The agent does
+mounted `CIDATA` volume. ConfigDrive reads only `uuid` and optional `hostname`
+from one selected `openstack/<version>/meta_data.json` on a local seed or
+`config-2` volume. Neither opens or executes user-data. The agent does
 not launch external plugins. Expanding accepted metadata, opening user-data, or
 adding external execution changes the threat model and requires an ADR, tests,
 and an update to `CLAUDE.md`.
 
-Both built-in plugins are independently disabled by default. Current
+All three built-in plugins are independently disabled by default. Current
 configuration disablement overrides pending state so an old checkpoint cannot
 reactivate discovery or mutation.
 
@@ -73,7 +75,7 @@ Administrators. It prevents an SCM service and an elevated console process—or
 two differently configured elevated processes in different sessions—from
 mutating the machine concurrently. A second process fails explicitly.
 
-## NoCloud and hostname controls
+## Datasource and hostname controls
 
 NoCloud discovery never picks between multiple eligible volumes. An explicit
 seed directory avoids enumeration; discovery otherwise requires exactly one
@@ -83,8 +85,22 @@ opening their contents. The `meta-data` file must be regular and no larger than
 64 KiB; aliases, multiple YAML documents, excessive nesting, and duplicate keys
 are rejected. Raw metadata is not persisted or included in diagnostics.
 
+ConfigDrive uses the same media restrictions with the `config-2` label and
+reads bounded UTF-8 JSON. Duplicate keys, excessive nesting, symlinked path
+components, and invalid consumed fields fail with sanitized errors. A selected
+version's invalid metadata never triggers downgrade or another datasource.
+The pipeline rejects multiple available enabled sources before any provisioner
+runs. It does not merge fields from different sources.
+
+OpenStack FQDN normalization occurs explicitly in ConfigDrive: validate the DNS
+name, take the lowercase first label, and leave Windows length/name validation
+to the provisioner. No suffix is configured and no label is truncated. Do not
+consume `user_data`, `password`, vendor/network data, or injected file paths.
+
 Hostname input is restricted to the documented conservative ASCII label. The
-agent refuses domain-joined rename and does not split or truncate an FQDN.
+provisioner refuses domain-joined rename and does not implicitly convert or
+truncate an FQDN. ConfigDrive's explicit normalization happens before this
+Windows-specific validation.
 `reboot.policy` remains `never`; LocalSystem records a restart checkpoint but
 never restarts the guest. The administrator controls restart timing.
 

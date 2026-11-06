@@ -8,8 +8,8 @@ and is being designed for NoCloud and OpenStack ConfigDrive metadata.
 
 > [!IMPORTANT]
 > The project is in an early provisioning milestone. It includes an opt-in,
-> built-in NoCloud datasource and an independently opt-in Windows hostname
-> provisioner. Both are disabled by default. User-data is never opened or
+> built-in NoCloud and OpenStack ConfigDrive datasources and an independently
+> opt-in Windows hostname provisioner. All are disabled by default. User-data is never opened or
 > executed. A running service must not be interpreted as a successfully
 > provisioned instance.
 
@@ -28,7 +28,7 @@ implementation of Cloudbase-Init.
 | Windows AMD64 EXE and MSI packaging | Foundation |
 | NoCloud seed directory and mounted CIDATA volume datasource | Implemented; opt-in |
 | Conservative Windows hostname provisioning | Implemented; opt-in |
-| OpenStack ConfigDrive datasource | Planned |
+| OpenStack ConfigDrive local seed and mounted config-2 datasource | Implemented; opt-in |
 | User, password, and SSH key provisioning | Planned |
 | PowerShell user-data | Planned |
 | Hostname restart checkpoint/reconciliation | Implemented; no automatic restart |
@@ -48,12 +48,12 @@ Windows, production state is kept under versioned Registry checkpoints; tests
 use an in-memory store.
 
 Small internal datasource and provisioner interfaces separate the pipeline
-from built-in implementations. The NoCloud datasource and hostname provisioner
+from built-in implementations. NoCloud, ConfigDrive, and the hostname provisioner
 are compiled into the executable, independently configured, and never enabled
 implicitly. The external process/gRPC protocol remains deferred; no public
 plugin API is exposed by this milestone.
 
-On each process start, the pipeline invokes the enabled datasource and
+On each process start, the pipeline probes all enabled datasources and
 reconciles each enabled provisioner once. Built-in constructors perform no I/O;
 all discovery and mutation remain behind the enablement gate. The engine does
 not poll or retry in a busy loop; a failure is attempted again only after a
@@ -61,6 +61,12 @@ later service/process start. A machine-wide
 `WininitPrivate\Provisioning` mutex in a protected Windows private namespace
 prevents service and foreground instances from mutating the host concurrently,
 even if they run in different sessions or use different Registry state paths.
+
+Exactly one enabled datasource must be available. Multiple matching sources
+fail before provisioning; an unavailable source permits fallback, while
+malformed metadata stops the run. ConfigDrive reads bounded OpenStack JSON,
+maps `uuid` to instance identity, and explicitly maps `hostname` FQDNs to their
+first DNS label. It does not execute user-data or configure networking.
 
 See [Architecture](docs/architecture.md) and the
 [architecture decision records](docs/adr/README.md).
@@ -153,8 +159,8 @@ private keys, and raw user-data must never appear in a diagnostic archive.
 
 Configuration has an explicit schema version and is rejected when unsupported
 or invalid. Schema version 1 remains backward compatible: configurations which
-omit the new built-in plugin sections keep both plugins disabled. NoCloud and
-hostname have separate `enabled` flags, and current configuration disablement
+omit built-in plugin sections keep those plugins disabled. NoCloud, ConfigDrive,
+and hostname have separate `enabled` flags, and current configuration disablement
 always takes priority over old pending checkpoints. `reboot.policy` remains
 `never`; the agent never restarts Windows automatically.
 
@@ -207,10 +213,10 @@ end-to-end validation is still pending.
 
 ## Security
 
-The service may require LocalSystem privileges for provisioning work. NoCloud
+The service may require LocalSystem privileges for provisioning work. NoCloud and ConfigDrive
 media, metadata, configuration, and future external plugins must all be treated
-as untrusted. The current datasource consumes only required `instance-id` and
-optional `local-hostname`; it never opens or executes `user-data`. External
+as untrusted. NoCloud consumes `instance-id` and optional `local-hostname`;
+ConfigDrive consumes `uuid` and optional `hostname`. Neither opens or executes user-data. External
 plugin execution is intentionally absent until identity, checksum, protocol
 negotiation, least-privilege execution, deadlines, cancellation, and
 secret-redaction controls are designed and reviewed.

@@ -11,6 +11,10 @@ plugins:
       enabled: false
       seed_directory: ''
       discover_volumes: true
+    configdrive:
+      enabled: false
+      seed_directory: ''
+      discover_volumes: true
   provisioners:
     hostname:
       enabled: false

@@ -34,6 +34,10 @@ func TestInstallerDefaultPluginsAreExplicitlyDisabled(t *testing.T) {
 	if cfg.Plugins.Provisioners.Hostname.Enabled {
 		t.Fatal("installer default enabled the hostname provisioner")
 	}
+	configDrive := cfg.Plugins.Datasources.ConfigDrive
+	if configDrive.Enabled || configDrive.SeedDirectory != "" || !configDrive.DiscoverVolumes {
+		t.Fatalf("unsafe ConfigDrive installer defaults: %#v", configDrive)
+	}
 	if cfg.Plugins.Directory == "" {
 		t.Fatal("installer plugin directory is empty")
 	}

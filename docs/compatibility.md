@@ -26,7 +26,7 @@ guests. It also does not test the Windows Server 2022 target.
 | OpenStack guest operation | Target; real-cloud testing planned |
 | NoCloud explicit seed directory | Implemented; disabled by default |
 | Mounted `CIDATA` ISO9660/FAT discovery | Implemented on Windows; disabled by default |
-| OpenStack ConfigDrive datasource | Planned |
+| OpenStack ConfigDrive local seed / mounted `config-2` FAT/ISO9660 | Implemented; disabled by default |
 | Metadata network service | Not in foundation scope |
 
 ## Provisioning
@@ -41,13 +41,15 @@ guests. It also does not test the Windows Server 2022 target.
 | Hostname restart checkpoint/reconciliation | Implemented; no automatic restart |
 | External plugins | Planned; no stable protocol yet |
 
-NoCloud currently accepts required `instance-id` and optional
-`local-hostname` only. User-data is not opened or executed. Hostname mutation
+NoCloud accepts `instance-id` and optional `local-hostname`; ConfigDrive accepts
+`uuid` and optional `hostname`, with explicit FQDN-to-first-label normalization.
+Supported ConfigDrive versions and exclusions are listed in
+[Built-in plugins](plugins.md). User-data is not opened or executed. Hostname mutation
 accepts only the documented 1–15 character ASCII label and refuses a
 domain-joined host.
 
 Unit and native Windows integration tests do not yet establish full product
-compatibility. Real Windows Server 2022/2025 guest validation of CIDATA
+compatibility. Real Windows Server 2022/2025 guest validation of CIDATA/config-2
 discovery, rename, administrator restart, and resume reconciliation is pending.
 
 ## Artifacts

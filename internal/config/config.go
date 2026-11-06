@@ -40,10 +40,11 @@ type PluginConfig struct {
 }
 
 type DatasourceConfig struct {
-	NoCloud NoCloudConfig `yaml:"nocloud" json:"nocloud"`
+	NoCloud     LocalDatasourceConfig `yaml:"nocloud" json:"nocloud"`
+	ConfigDrive LocalDatasourceConfig `yaml:"configdrive" json:"configdrive"`
 }
 
-type NoCloudConfig struct {
+type LocalDatasourceConfig struct {
 	Enabled         bool   `yaml:"enabled" json:"enabled"`
 	SeedDirectory   string `yaml:"seed_directory" json:"seed_directory"`
 	DiscoverVolumes bool   `yaml:"discover_volumes" json:"discover_volumes"`
@@ -61,8 +62,7 @@ type RebootConfig struct {
 	Policy string `yaml:"policy" json:"policy"`
 }
 
-// Default returns safe settings. Reboots remain disabled because provisioning
-// and reboot orchestration are not implemented.
+// Default keeps every plugin opt-in and leaves reboots administrator-controlled.
 func Default() Config {
 	programData := os.Getenv("ProgramData")
 	if programData == "" {
@@ -76,8 +76,14 @@ func Default() Config {
 		Version: CurrentVersion,
 		Log:     LogConfig{Level: "info", Directory: filepath.Join(programData, "wininit", "logs")},
 		State:   StateConfig{RegistryPath: `SOFTWARE\Wininit`},
-		Plugins: PluginConfig{Directory: filepath.Join(programData, "wininit", "plugins"), Datasources: DatasourceConfig{NoCloud: NoCloudConfig{DiscoverVolumes: true}}},
-		Reboot:  RebootConfig{Policy: "never"},
+		Plugins: PluginConfig{
+			Directory: filepath.Join(programData, "wininit", "plugins"),
+			Datasources: DatasourceConfig{
+				NoCloud:     LocalDatasourceConfig{DiscoverVolumes: true},
+				ConfigDrive: LocalDatasourceConfig{DiscoverVolumes: true},
+			},
+		},
+		Reboot: RebootConfig{Policy: "never"},
 	}
 }
 
@@ -163,16 +169,21 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.Plugins.Directory) == "" {
 		errs = append(errs, errors.New("plugins.directory must not be empty"))
 	}
-	noCloud := c.Plugins.Datasources.NoCloud
-	if noCloud.Enabled {
-		if noCloud.SeedDirectory == "" && !noCloud.DiscoverVolumes {
-			errs = append(errs, errors.New("enabled nocloud requires seed_directory or discover_volumes"))
-		}
-		if noCloud.SeedDirectory != "" && !filepath.IsAbs(noCloud.SeedDirectory) {
-			errs = append(errs, errors.New("plugins.datasources.nocloud.seed_directory must be an absolute local path"))
-		}
-		if strings.HasPrefix(noCloud.SeedDirectory, `\\`) || strings.HasPrefix(noCloud.SeedDirectory, "//") || strings.Contains(noCloud.SeedDirectory, "://") {
-			errs = append(errs, errors.New("nocloud network paths and URLs are not supported"))
+	for _, entry := range []struct {
+		name   string
+		source LocalDatasourceConfig
+	}{{"nocloud", c.Plugins.Datasources.NoCloud}, {"configdrive", c.Plugins.Datasources.ConfigDrive}} {
+		name, source := entry.name, entry.source
+		if source.Enabled {
+			if source.SeedDirectory == "" && !source.DiscoverVolumes {
+				errs = append(errs, fmt.Errorf("enabled %s requires seed_directory or discover_volumes", name))
+			}
+			if source.SeedDirectory != "" && !filepath.IsAbs(source.SeedDirectory) {
+				errs = append(errs, fmt.Errorf("plugins.datasources.%s.seed_directory must be an absolute local path", name))
+			}
+			if strings.HasPrefix(source.SeedDirectory, `\\`) || strings.HasPrefix(source.SeedDirectory, "//") || strings.Contains(source.SeedDirectory, "://") {
+				errs = append(errs, fmt.Errorf("%s network paths and URLs are not supported", name))
+			}
 		}
 	}
 	if c.Reboot.Policy != "never" {

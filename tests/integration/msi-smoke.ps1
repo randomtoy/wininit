@@ -182,16 +182,20 @@ try {
         throw "Status reported provisioning '$($status.provisioning)', expected 'disabled'."
     }
     $plugins = @($status.plugins)
-    if ($plugins.Count -ne 2) {
-        throw "Status reported $($plugins.Count) plugins, expected the disabled NoCloud datasource and hostname provisioner."
+    if ($plugins.Count -ne 3) {
+        throw "Status reported $($plugins.Count) plugins, expected disabled NoCloud, ConfigDrive, and hostname plugins."
     }
     $noCloud = @($plugins | Where-Object { $_.name -eq 'nocloud' -and $_.kind -eq 'datasource' })
     $hostname = @($plugins | Where-Object { $_.name -eq 'hostname' -and $_.kind -eq 'provisioner' })
+    $configDrive = @($plugins | Where-Object { $_.name -eq 'configdrive' -and $_.kind -eq 'datasource' })
     if ($noCloud.Count -ne 1 -or $noCloud[0].enabled -ne $false) {
         throw 'NoCloud datasource was not reported exactly once as disabled.'
     }
     if ($hostname.Count -ne 1 -or $hostname[0].enabled -ne $false) {
         throw 'Hostname provisioner was not reported exactly once as disabled.'
+    }
+    if ($configDrive.Count -ne 1 -or $configDrive[0].enabled -ne $false -or $configDrive[0].status -ne 'disabled') {
+        throw 'ConfigDrive datasource was not reported exactly once as disabled.'
     }
     if (@($plugins | Where-Object { $_.enabled }).Count -ne 0) {
         throw 'The installer default configuration unexpectedly enabled a plugin.'

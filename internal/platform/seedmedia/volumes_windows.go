@@ -1,12 +1,11 @@
 //go:build windows
 
-package nocloud
+package seedmedia
 
 import (
 	"context"
 	"fmt"
 	"runtime"
-	"strings"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -14,9 +13,12 @@ import (
 
 var setThreadErrorMode = windows.NewLazySystemDLL("kernel32.dll").NewProc("SetThreadErrorMode")
 
-// FindVolumes discovers mounted FAT/ISO9660 CIDATA volumes without reading
+// FindVolumes discovers mounted FAT/ISO9660 volumes with the requested label without reading
 // other drives' contents. SMB and other remote drives are never considered.
-func FindVolumes(ctx context.Context) ([]string, error) {
+func FindVolumes(ctx context.Context, label string) ([]string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	// Empty CD-ROM/removable media must not show an interactive "insert disk"
 	// dialog in a service. This mode belongs to the OS thread, so pin it until
 	// the old mode is restored rather than changing the whole process.
@@ -50,21 +52,15 @@ func FindVolumes(ctx context.Context) ([]string, error) {
 		default:
 			continue
 		}
-		var label, filesystem [256]uint16
-		err = windows.GetVolumeInformation(path, &label[0], uint32(len(label)), nil, nil, nil, &filesystem[0], uint32(len(filesystem)))
+		var volumeLabel, filesystem [256]uint16
+		err = windows.GetVolumeInformation(path, &volumeLabel[0], uint32(len(volumeLabel)), nil, nil, nil, &filesystem[0], uint32(len(filesystem)))
 		if err != nil {
 			// Inaccessible or empty unrelated drives do not invalidate another
 			// eligible seed. No directory contents are probed during enumeration.
 			continue
 		}
-		if !strings.EqualFold(windows.UTF16ToString(label[:]), "cidata") {
-			continue
-		}
-		switch strings.ToUpper(windows.UTF16ToString(filesystem[:])) {
-		case "FAT", "FAT32", "CDFS", "ISO9660":
+		if matchesVolume(windows.UTF16ToString(volumeLabel[:]), windows.UTF16ToString(filesystem[:]), label) {
 			roots = append(roots, root)
-		default:
-			continue
 		}
 	}
 	return roots, nil

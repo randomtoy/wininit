@@ -1,0 +1,4 @@
+#cloud-config
+# Test fixture only. ConfigDrive must never open or execute this file.
+runcmd:
+  - ['powershell.exe', '-Command', 'throw "ConfigDrive user_data must not execute"']

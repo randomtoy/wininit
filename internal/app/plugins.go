@@ -8,6 +8,7 @@ import (
 	"github.com/randomtoy/wininit/internal/config"
 	platformhostname "github.com/randomtoy/wininit/internal/platform/hostname"
 	"github.com/randomtoy/wininit/internal/plugin"
+	"github.com/randomtoy/wininit/plugins/datasource/configdrive"
 	"github.com/randomtoy/wininit/plugins/datasource/nocloud"
 	"github.com/randomtoy/wininit/plugins/provisioner/hostname"
 )
@@ -19,6 +20,9 @@ func configuredPlugins(cfg config.Config) plugin.Catalog {
 		Datasources: []plugin.DatasourceRegistration{{
 			Enabled: cfg.Plugins.Datasources.NoCloud.Enabled,
 			Plugin:  nocloud.New(cfg.Plugins.Datasources.NoCloud.SeedDirectory, cfg.Plugins.Datasources.NoCloud.DiscoverVolumes, nocloud.FindVolumes),
+		}, {
+			Enabled: cfg.Plugins.Datasources.ConfigDrive.Enabled,
+			Plugin:  configdrive.New(cfg.Plugins.Datasources.ConfigDrive.SeedDirectory, cfg.Plugins.Datasources.ConfigDrive.DiscoverVolumes, configdrive.FindVolumes),
 		}},
 		Provisioners: []plugin.ProvisionerRegistration{{Enabled: cfg.Plugins.Provisioners.Hostname.Enabled, Plugin: hostname.New(platformhostname.New())}},
 	}
@@ -31,7 +35,7 @@ func pluginConfigurationHash(cfg config.Config) string {
 }
 
 func configuredProvisioning(cfg config.Config) string {
-	if !cfg.Plugins.Datasources.NoCloud.Enabled && !cfg.Plugins.Provisioners.Hostname.Enabled {
+	if !cfg.Plugins.Datasources.NoCloud.Enabled && !cfg.Plugins.Datasources.ConfigDrive.Enabled && !cfg.Plugins.Provisioners.Hostname.Enabled {
 		return "disabled"
 	}
 	return "pending"

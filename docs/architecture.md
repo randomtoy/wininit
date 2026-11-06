@@ -4,7 +4,7 @@
 
 The agent provides a Windows Service/CLI process, configuration, lifecycle
 state, diagnostics, and an internal opt-in plugin pipeline. The current pipeline
-contains only a narrow NoCloud datasource and Windows hostname provisioner. The
+contains NoCloud and OpenStack ConfigDrive datasources and a Windows hostname provisioner. The
 architecture separates those responsibilities without committing to an
 external or public plugin interface.
 
@@ -20,12 +20,13 @@ Windows SCM / command-line user
       internal/lifecycle ---------- internal/config
          /         \
  internal/plugin    StateStore
-    /       \        /      \
-NoCloud   hostname  Registry  memory
- datasource provisioner       tests
+   |                 /      \
+   +-- NoCloud      Registry  memory tests
+   +-- ConfigDrive
+   +-- hostname
 ```
 
-NoCloud and hostname are built-in implementation packages, not external
+NoCloud, ConfigDrive, and hostname are built-in implementation packages, not external
 processes. The external executable manager and protobuf/gRPC protocol remain
 future components and must not be inferred from the diagram.
 
@@ -77,9 +78,12 @@ called from another goroutine; it signals the owner thread to release and clean
 up the mutex handle. The protected namespace handle is retained for the process
 lifetime.
 
-The datasource stage runs before provisioners. The built-in NoCloud datasource
-returns a small internal metadata model containing required `instance-id` and
-optional `local-hostname`. If enabled, the hostname provisioner consumes that
+The datasource stage probes all enabled sources before provisioners. NoCloud
+maps `instance-id` and optional `local-hostname`; ConfigDrive maps `uuid` and
+optional `hostname` into the same internal metadata model. Exactly one source
+must succeed: multiple available sources fail before mutation, and only
+unavailable sources permit fallback. Malformed input never triggers fallback.
+If enabled, the hostname provisioner consumes that
 model, validates the target, compares the active computer name, and either does
 nothing idempotently, refuses the mutation, or requests the Windows rename.
 This reconciliation runs once per process start. A failure is retried only on a
@@ -130,7 +134,8 @@ as silent production fallback.
 
 Small internal `Datasource` and `Provisioner` contracts are defined for the
 application's needs. Implementations live separately under
-`plugins/datasource/nocloud` and `plugins/provisioner/hostname`. They are
+`plugins/datasource/nocloud`, `plugins/datasource/configdrive`, and
+`plugins/provisioner/hostname`. They are
 compiled into `wininit.exe`; `plugins.directory` is not scanned or executed.
 The pipeline itself lives in `internal/lifecycle`, while `internal/plugin`
 contains contracts and catalog types.
@@ -142,6 +147,20 @@ unrelated local drives are skipped rather than making them candidates. The
 discovery checkpoint remains pending until every enabled datasource candidate
 has returned unavailable. Only `instance-id` and `local-hostname` are in scope.
 `user-data` is never opened or run.
+
+ConfigDrive reads one `openstack/<version>/meta_data.json` from a local seed or
+mounted FAT/ISO9660 `config-2` volume. It prefers the newest supported dated
+directory, with `latest` as fallback only if no supported date is present.
+The parser accepts bounded UTF-8 JSON, rejects duplicate keys and excessive
+nesting, and extracts only instance identity and hostname. An OpenStack FQDN
+is explicitly normalized to its lowercase first DNS label; Windows-specific
+validation remains in the hostname provisioner. No user-data, password,
+network/vendor metadata, EC2 layout, or injected file is consumed.
+
+Both datasources share read-only mounted-volume discovery through
+`internal/platform/seedmedia`. Media labels remain separate, and both plugin
+constructors perform no I/O. See [ADR 0010](adr/0010-openstack-configdrive.md)
+for version selection, normalization, and conflict behavior.
 
 Hostname validation accepts only a conservative 1–15 character ASCII label
 which is not all numeric. The provisioner refuses domain-joined hosts. Windows

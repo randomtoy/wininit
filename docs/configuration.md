@@ -29,6 +29,10 @@ plugins:
       enabled: false
       seed_directory: ''
       discover_volumes: true
+    configdrive:
+      enabled: false
+      seed_directory: ''
+      discover_volumes: true
   provisioners:
     hostname:
       enabled: false
@@ -48,6 +52,9 @@ The complete serialized schema is:
 | `plugins.datasources.nocloud.enabled` | No | Opts into the built-in NoCloud datasource; defaults to `false`. |
 | `plugins.datasources.nocloud.seed_directory` | No | Explicit seed directory; defaults to empty. |
 | `plugins.datasources.nocloud.discover_volumes` | No | Permits mounted `CIDATA` ISO9660/FAT discovery; defaults to `true`. |
+| `plugins.datasources.configdrive.enabled` | No | Opts into OpenStack ConfigDrive; defaults to `false`. |
+| `plugins.datasources.configdrive.seed_directory` | No | Local ConfigDrive root containing `openstack/`; defaults to empty. |
+| `plugins.datasources.configdrive.discover_volumes` | No | Permits mounted `config-2` ISO9660/FAT discovery; defaults to `true`. |
 | `plugins.provisioners.hostname.enabled` | No | Opts into hostname mutation; defaults to `false`. |
 | `reboot.policy` | No | Must be `never`; restart is always administrator-controlled. |
 
@@ -73,12 +80,15 @@ overlap unrelated Registry values.
 
 The built-in plugin additions do not change the configuration schema version.
 A pre-existing version 1 file with no `plugins.datasources` or
-`plugins.provisioners` section remains valid and leaves both plugins disabled.
+`plugins.provisioners` section remains valid and leaves all plugins disabled.
+An existing NoCloud configuration without a `configdrive` section keeps
+ConfigDrive disabled, without changing the configuration schema version.
 Installing or upgrading a new executable must not turn on metadata discovery or
 hostname mutation.
 
 Each `enabled` flag is authoritative for that plugin. Disabling NoCloud prevents
-seed discovery and metadata reads. Disabling hostname prevents rename and
+its seed discovery and metadata reads; ConfigDrive has its own independent
+gate. Disabling hostname prevents rename and
 checkpoint reconciliation. Current configuration takes precedence over a
 pending checkpoint created when a plugin was enabled.
 
@@ -86,7 +96,10 @@ When NoCloud is enabled, configure either a non-empty `seed_directory` or
 mounted-volume discovery. An explicit directory is the selected source; volume
 discovery accepts exactly one mounted `CIDATA` volume formatted as ISO9660 or
 FAT and fails on ambiguity. See [Built-in plugins](plugins.md) for complete
-enable and disable examples.
+enable and disable examples. ConfigDrive has the same source options, but uses
+the `config-2` label and OpenStack JSON layout. When multiple datasource
+plugins are enabled, exactly one may provide metadata. Availability conflicts
+and malformed metadata fail before any provisioner runs.
 
 ## Validation
 
@@ -104,7 +117,8 @@ not start provisioning.
 ## Sensitive values
 
 The schema has no password, token, private-key, or raw user-data fields. The
-NoCloud datasource never opens `user-data`. Future sensitive values must not be
+datasources never open NoCloud `user-data` or ConfigDrive `user_data`.
+Future sensitive values must not be
 written to lifecycle state, normal logs, status output, or diagnostic archives.
 Configuration sanitization must default to removal rather than relying only on
 field-name pattern matching.

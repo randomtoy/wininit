@@ -8,9 +8,9 @@ consists of one Windows Service/CLI executable, a lifecycle pipeline, versioned
 configuration, Registry-backed persistent state, diagnostics, Windows
 packaging, and CI.
 
-The current provisioning scope is one built-in NoCloud datasource and one
-built-in Windows hostname provisioner. Both are independently opt-in and
-disabled by default. Do not claim that a VM was provisioned merely because the
+The current scope includes built-in NoCloud and OpenStack ConfigDrive
+datasources and a Windows hostname provisioner. All three plugins are
+independently opt-in and disabled by default. Do not claim that a VM was provisioned merely because the
 service started, metadata was found, or a reboot checkpoint was saved.
 
 ## Mandatory maintenance rule
@@ -115,7 +115,7 @@ an actual run of that procedure.
 - The version 1 schema remains backward compatible. Missing built-in plugin
   fields mean disabled; never infer enablement from old state or installed
   files.
-- NoCloud and hostname enablement are independent. A single global plugin flag
+- NoCloud, ConfigDrive, and hostname enablement are independent. A single global plugin flag
   is not an acceptable substitute.
 - `state.registry_path` must name a non-empty, dedicated subkey below
   `HKLM\SOFTWARE`. Never accept the `SOFTWARE` root or a shared broad parent as
@@ -170,7 +170,13 @@ an actual run of that procedure.
 - `Datasource` and `Provisioner` are small internal interfaces. Do not expose
   them as a stable public Go API.
 - Built-in implementations remain separate under
-  `plugins/datasource/nocloud` and `plugins/provisioner/hostname`.
+  `plugins/datasource/nocloud`, `plugins/datasource/configdrive`, and
+  `plugins/provisioner/hostname`.
+- Local datasource configuration shares the internal `LocalDatasourceConfig`
+  settings, but each plugin has its own enabled flag and source selection.
+- Probe all enabled datasources before provisioners. Exactly one must return
+  metadata. Multiple available sources fail before mutation regardless of
+  catalog order; only `ErrUnavailable` allows fallback, never malformed data.
 - The pipeline executes enabled plugins only. Disabled plugins do not discover,
   parse, mutate, resume, or reconcile work.
 - Built-in constructors perform no I/O; all discovery and platform access stays
@@ -178,6 +184,10 @@ an actual run of that procedure.
 - On each process start, rediscover metadata and reconcile every enabled
   provisioner once. Retry failures only on a later process start; do not add an
   automatic retry or busy loop.
+- Before discovery or saving a new configuration hash, reset every enabled
+  provisioner to `pending` and clear its prior input hash/reboot flag. Missing,
+  malformed, or ambiguous sources must not expose an earlier result as current.
+  Preserve attempt counters until a different instance is selected.
 - The built-in NoCloud datasource accepts only required `instance-id` and
   optional `local-hostname`. It must never open or execute `user-data`.
 - Use either an explicit seed directory or one unambiguous, already-mounted
@@ -185,6 +195,19 @@ an actual run of that procedure.
 - Skip query failures and unsupported filesystems on unrelated local drives;
   they are not eligible NoCloud candidates. Keep discovery pending until all
   enabled datasource candidates have returned unavailable.
+- Share mounted-media discovery through `internal/platform/seedmedia`.
+  NoCloud uses `CIDATA`; ConfigDrive uses `config-2`, case-insensitively, on
+  supported FAT/ISO9660 volumes only. Constructors must not enumerate drives.
+- ConfigDrive consumes only `uuid` and optional `hostname` from one bounded
+  `openstack/<version>/meta_data.json`. Select the newest supported dated
+  directory (2025-04-04 through 2012-08-10); use `latest` only if no supported
+  dated directory exists. Never downgrade when a selected directory/file is
+  malformed. Reject duplicate JSON keys, excessive nesting, and symlink paths.
+- ConfigDrive explicitly maps a valid DNS hostname/FQDN to its lowercase first
+  label; never truncate it to 15 characters. The existing hostname provisioner
+  remains responsible for Windows validation. Do not use the display `name`.
+- Never open ConfigDrive `user_data`, `password`, vendor/network metadata, EC2
+  layouts, or injected file contents. Do not fetch network metadata.
 - The hostname provisioner accepts only the documented conservative 1–15
   character ASCII label, rejects all-numeric names, refuses domain-joined
   rename, and compares the active computer name idempotently.
@@ -211,9 +234,10 @@ default. `plugins.directory` is reserved and does not authorize execution.
 
 - Treat metadata, user-data, configuration, plugin output, filenames, archive
   entries, and Registry contents as untrusted.
-- Never open, parse, archive, or execute NoCloud `user-data` in the current
+- Never open, parse, archive, or execute NoCloud `user-data` or ConfigDrive
+  `user_data` in the current
   milestone.
-- Refuse ambiguous `CIDATA` discovery and domain-joined hostname mutation.
+- Refuse ambiguous media/datasource selection and domain-joined hostname mutation.
 - Apply least privilege and restrictive ACLs where Windows permits it.
 - Do not disable certificate or integrity checks to make a test pass.
 - Diagnostics must use an allowlist and sanitized configuration, not an
