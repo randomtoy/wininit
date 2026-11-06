@@ -9,9 +9,9 @@ and is being designed for NoCloud and OpenStack ConfigDrive metadata.
 > [!IMPORTANT]
 > The project is in an early provisioning milestone. It includes opt-in
 > NoCloud and ConfigDrive datasources, hostname, local users, password policy,
-> and SSH keys. All are disabled by default. ConfigDrive can optionally run as a
-> separate verified EXE. User-data is never opened or
-> executed. A running service must not be interpreted as a successfully
+> SSH keys, and a separate PowerShell user-data executable. All are disabled
+> by default. PowerShell requires explicit privileged authorization and script/EXE
+> SHA-256 pins. ConfigDrive can optionally run as a separate verified EXE. A running service must not be interpreted as a successfully
 > provisioned instance.
 
 `wininit` is an independent design, not a line-by-line port or derivative
@@ -31,7 +31,7 @@ implementation of Cloudbase-Init.
 | Conservative Windows hostname provisioning | Implemented; opt-in |
 | OpenStack ConfigDrive local seed and mounted config-2 datasource | Implemented; opt-in |
 | Standard local users, initial passwords, SAM policy, SSH keys | Implemented; opt-in |
-| PowerShell user-data | Planned |
+| PowerShell user-data | Experimental separate EXE; opt-in, hash-approved, one-shot |
 | Hostname restart checkpoint/reconciliation | Implemented; no automatic restart |
 | External ConfigDrive and versioned Go SDK | Experimental v1; opt-in |
 
@@ -49,7 +49,7 @@ Windows, production state is kept under versioned Registry checkpoints; tests
 use an in-memory store.
 
 Small internal datasource and provisioner interfaces separate the pipeline
-from implementations. The six logical plugins are independently configured
+from implementations. The seven logical plugins are independently configured
 and never enabled implicitly. ConfigDrive can select an external executable
 using the experimental protobuf/gRPC SDK and HashiCorp go-plugin; the existing
 built-in mode remains compatible with older configuration.
@@ -58,7 +58,8 @@ On each process start, the pipeline probes all enabled datasources and
 reconciles each enabled provisioner once. Built-in constructors perform no I/O;
 all discovery and mutation remain behind the enablement gate. The engine does
 not poll or retry in a busy loop; a failure is attempted again only after a
-later service/process start. A machine-wide
+later service/process start. PowerShell instead uses a durable one-shot journal:
+failed or interrupted executions require a new execution ID. A machine-wide
 `WininitPrivate\Provisioning` mutex in a protected Windows private namespace
 prevents service and foreground instances from mutating the host concurrently,
 even if they run in different sessions or use different Registry state paths.
@@ -91,12 +92,13 @@ Release artifacts are expected to contain:
 wininit-windows-amd64.exe
 wininit-windows-amd64.msi
 wininit-plugin-configdrive-windows-amd64.exe
+wininit-plugin-powershell-windows-amd64.exe
 SHA256SUMS
 ```
 
 Verify `SHA256SUMS` before installing. MVP artifacts are not code-signed.
-The MSI installs the agent. The optional plugin is a separate artifact; see
-[external plugin setup](docs/external-plugins.md). It is not discovered or
+The MSI installs the agent. The optional plugins are separate artifacts; see
+[external plugin setup](docs/external-plugins.md). A plugin is not discovered or
 launched just because it is present.
 
 For an interactive installation, open the MSI from an elevated Windows
@@ -174,6 +176,8 @@ See [Configuration](docs/configuration.md) for the schema and default paths, and
 Account creation/password policy/SSH setup is documented in
 [Identity and access](docs/identity.md). Process mode and the same-repository
 decision are documented in [External ConfigDrive](docs/external-plugins.md).
+See [PowerShell user-data](docs/powershell-user-data.md) for its separate
+installation, approval, execution journal, and retry policy.
 
 ## Build
 
@@ -221,13 +225,18 @@ end-to-end validation is still pending.
 The narrower [Windows Server 2025 guest review](tests/e2e/2026-11-06-pr4-review.md)
 verified identity, real SSH login/revocation, external ConfigDrive local seeds,
 SCM cancellation, and MSI installation/upgrade without restarting the guest.
+The [PowerShell guest acceptance](tests/e2e/2026-11-06-powershell-user-data.md)
+verified the separate LocalSystem plugin, bounded failures, replay protection,
+and one administrator reboot/resume on Windows Server 2025.
 
 ## Security
 
 The service may require LocalSystem privileges for provisioning work. NoCloud and ConfigDrive
 media, metadata, configuration, and future external plugins must all be treated
 as untrusted. NoCloud consumes `instance-id` and optional `local-hostname`;
-ConfigDrive consumes `uuid` and optional `hostname`. Neither opens or executes user-data. External
+ConfigDrive consumes `uuid` and optional `hostname`. The datasource implementations
+never open user-data; the separately enabled PowerShell process may execute only
+a hash-approved script from the selected source. External
 ConfigDrive execution requires an explicitly selected reviewed image, pinned
 checksum, version/identity negotiation, restricted process launch, deadlines,
 cancellation, and output redaction. The [experimental process protocol](docs/external-plugins.md)

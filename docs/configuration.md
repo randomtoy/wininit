@@ -81,6 +81,7 @@ The complete serialized schema is:
 | `plugins.provisioners.password_policy` | No | Separate `enabled: false` plus bounded SAM password/lockout fields shown above. |
 | `plugins.provisioners.local_users` | No | Separate `enabled: false` and `users` entries: `name`, `full_name`, `description`, `password_file`, `password_never_expires`. |
 | `plugins.provisioners.authorized_keys` | No | Separate `enabled: false` and `users` entries: `name` and `public_keys`. Empty keys revoke the managed block. |
+| `plugins.provisioners.powershell_user_data` | No | Separate `enabled: false`, `allow_privileged: false`; explicit execution ID, script/EXE SHA-256 pins, process timeout and output limit. See [PowerShell policy](powershell-user-data.md). |
 | `reboot.policy` | No | Must be `never`; restart is always administrator-controlled. |
 
 The default operational locations are conceptually:
@@ -145,7 +146,9 @@ not start provisioning.
 ## Sensitive values
 
 The schema has no password, token, private-key, or raw user-data fields. The
-datasources never open NoCloud `user-data` or ConfigDrive `user_data`.
+datasources never open NoCloud `user-data` or ConfigDrive `user_data`. Only the
+separate enabled PowerShell process reads the selected source payload, with an
+explicit script pin and privileged authorization.
 Future sensitive values must not be
 written to lifecycle state, normal logs, status output, or diagnostic archives.
 Configuration sanitization must default to removal rather than relying only on

@@ -13,7 +13,7 @@ authorized.
 ## Prepare
 
 1. Take a VM snapshot and install the candidate MSI with verbose logging.
-2. Record the original active hostname and verify all six logical plugins are disabled in
+2. Record the original active hostname and verify all seven logical plugins are disabled in
    `wininit.exe status --json`.
 3. Copy `tests/fixtures/nocloud/meta-data` to a local seed directory in the VM,
    or attach a FAT/ISO9660 volume labelled `CIDATA` with `meta-data` at its root.
@@ -87,3 +87,44 @@ the FQDN's first label is the requested Windows name.
 Collect sanitized diagnostics, MSI logs, OS edition/build, hypervisor/version,
 source commit, and results for each case. Restore the snapshot after testing.
 Do not commit Windows media, credentials, license keys, or raw user-data.
+
+## Separate PowerShell acceptance
+
+Use a disposable guest and the exact candidate artifacts/checksums. The
+PowerShell procedure is independent of the hostname procedure above and does
+not need a rename, local-account/password changes, or OpenSSH reconfiguration.
+
+1. Record OS/build, boot time, hostname, existing service/configuration/state,
+   and candidate commit. Refuse to replace an unrelated installation.
+2. Install the MSI with `/qn /norestart`. Verify all seven plugins are disabled
+   and neither separate plugin EXE was installed by MSI. Install the reviewed
+   PowerShell EXE separately under protected SYSTEM/Administrators ownership.
+3. Use an isolated Registry path, log directory and local NoCloud seed. Enable
+   only the selected datasource and PowerShell with exact script/EXE hashes,
+   `allow_privileged: true`, and a new execution ID. A benign script appends
+   one byte to a test-owned counter and exits 0. Verify one append and numeric
+   success. Restart the service, remove the payload, and verify cached success
+   without another append.
+4. Verify a wrong script pin cannot create the counter. Verify a terminating
+   error appends once, remains blocked across service restart, and runs again
+   only after a new execution ID. Exercise bounded output and timeout, SCM stop
+   cancellation, and confirm native descendants are gone. Repeat source reading
+   with ConfigDrive. Inspect state/logs/diagnostics for fixture payload/output.
+5. Run a benign counter script ending with `exit 3010`. Verify no automatic
+   reboot, `reboot_required`, and unchanged boot time. Restart only the service:
+   the request remains pending and the counter stays unchanged.
+6. **Only if the guest administrator explicitly authorizes reboot for this run**,
+   reboot once. Wait for the guest to return (it may take ten minutes), confirm
+   a changed OS boot time, automatic service start, `completed`, `reused: true`,
+   unchanged counter and original journal 3010 evidence. Restart the service
+   again and verify no replay. Never simulate this by deleting BootSession.
+7. Collect sanitized evidence and uninstall the test-owned MSI. Remove only
+   test-created configuration, seed, plugin, log and Registry resources; restore
+   any saved administrator-owned state. Confirm SSH access still works.
+
+Record actual runs separately with their scope and limitations. A cross-build,
+hosted runner or simulated boot transition is not a guest reboot acceptance run.
+
+The [2026-11-06 PowerShell run](2026-11-06-powershell-user-data.md) records
+LocalSystem local-seed acceptance with an explicitly authorized real reboot.
+It does not execute the hostname-rename procedure above.

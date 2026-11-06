@@ -244,3 +244,18 @@ func writeConfig(t *testing.T, content string) string {
 	}
 	return path
 }
+
+func TestPowerShellRequiresIndependentAuthorizationAndRedactsExecutionID(t *testing.T) {
+	cfg := Default()
+	if cfg.Plugins.Provisioners.PowerShellUserData.Enabled || cfg.Plugins.Provisioners.PowerShellUserData.AllowPrivileged {
+		t.Fatal("privileged execution enabled by default")
+	}
+	cfg.Plugins.Provisioners.PowerShellUserData.ExecutionID = "private-operation-label"
+	if cfg.Sanitized().Plugins.Provisioners.PowerShellUserData.ExecutionID != "" {
+		t.Fatal("diagnostics disclosed execution label")
+	}
+	cfg.Plugins.Provisioners.PowerShellUserData.Enabled = true
+	if cfg.Validate() == nil {
+		t.Fatal("privileged execution accepted without explicit authorization and pins")
+	}
+}

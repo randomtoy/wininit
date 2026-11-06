@@ -17,7 +17,7 @@ if ($bytes -contains 13) {
 }
 $content = [Text.Encoding]::UTF8.GetString($bytes)
 $lines = $content.TrimEnd("`n").Split("`n")
-$expectedNames = @('wininit-windows-amd64.exe', 'wininit-windows-amd64.msi', 'wininit-plugin-configdrive-windows-amd64.exe')
+$expectedNames = @('wininit-windows-amd64.exe', 'wininit-windows-amd64.msi', 'wininit-plugin-configdrive-windows-amd64.exe', 'wininit-plugin-powershell-windows-amd64.exe')
 if ($lines.Count -ne $expectedNames.Count) {
     throw "SHA256SUMS contains $($lines.Count) entries; expected $($expectedNames.Count)."
 }

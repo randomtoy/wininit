@@ -2,6 +2,8 @@ package state
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"sync"
 )
 
@@ -12,6 +14,15 @@ type MemoryStore struct {
 }
 
 func NewMemoryStore() *MemoryStore { return &MemoryStore{} }
+
+// BootID is a stable test-only boot identity; this store is never production.
+func (*MemoryStore) BootID(ctx context.Context) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256([]byte("memory-store-test-boot"))
+	return hex.EncodeToString(sum[:]), nil
+}
 
 func (m *MemoryStore) Load(ctx context.Context) (State, error) {
 	if err := ctx.Err(); err != nil {
@@ -45,6 +56,13 @@ func (m *MemoryStore) Save(ctx context.Context, value State) error {
 }
 
 func clone(value State) State {
+	if value.Executions != nil {
+		entries := make(map[string]Execution, len(value.Executions))
+		for key, execution := range value.Executions {
+			entries[key] = execution
+		}
+		value.Executions = entries
+	}
 	if value.Plugins != nil {
 		plugins := make(map[string]PluginState, len(value.Plugins))
 		for name, checkpoint := range value.Plugins {

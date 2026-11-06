@@ -129,6 +129,7 @@ jobs:
             dist/wininit-windows-amd64.exe
             dist/wininit-windows-amd64.msi
             dist/wininit-plugin-configdrive-windows-amd64.exe
+            dist/wininit-plugin-powershell-windows-amd64.exe
             dist/SHA256SUMS
           if-no-files-found: error
           retention-days: 30
@@ -155,6 +156,7 @@ jobs:
             dist/wininit-windows-amd64.exe \
             dist/wininit-windows-amd64.msi \
             dist/wininit-plugin-configdrive-windows-amd64.exe \
+            dist/wininit-plugin-powershell-windows-amd64.exe \
             dist/SHA256SUMS \
             --verify-tag \
             --title "$GITHUB_REF_NAME" \

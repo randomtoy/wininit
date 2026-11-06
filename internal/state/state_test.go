@@ -30,7 +30,7 @@ func TestSchemaOneMigrationDoesNotInventProvisioningSuccess(t *testing.T) {
 	old.SchemaVersion = 1
 	old.InstanceID = "existing-instance"
 	got, err := decodeCheckpoint(rawCheckpoint(t, old))
-	if err != nil || got.SchemaVersion != 2 || got.InstanceID != old.InstanceID || got.Provisioning != "disabled" {
+	if err != nil || got.SchemaVersion != CurrentSchemaVersion || got.InstanceID != old.InstanceID || got.Provisioning != "disabled" {
 		t.Fatalf("migrated=%#v err=%v", got, err)
 	}
 }

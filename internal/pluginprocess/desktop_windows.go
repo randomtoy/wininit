@@ -38,19 +38,23 @@ type privateDesktop struct {
 	station, desktop windows.Handle
 }
 type desktopCreationResult struct {
-	desktop *privateDesktop
-	err     error
-	done    chan struct{}
+	desktop  *privateDesktop
+	err      error
+	done     chan struct{}
+	security string
 }
 
 func newPrivateDesktop() (*privateDesktop, error) {
+	return newPrivateDesktopWithSecurity("O:BAG:BAD:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;AU)S:(ML;;NW;;;LW)")
+}
+func newPrivateDesktopWithSecurity(security string) (*privateDesktop, error) {
 	desktopCreationMu.Lock()
 	defer desktopCreationMu.Unlock()
 	// A locked Go goroutine may run on the runtime's immortal initial thread.
 	// Use a real native thread whose callback returns to ExitThread instead.
 	// Its only native parameter is zero; Go state stays rooted in Go memory.
 	desktopCallbackOnce.Do(func() { desktopCallback = syscall.NewCallback(desktopThreadEntry) })
-	outcome := &desktopCreationResult{done: make(chan struct{})}
+	outcome := &desktopCreationResult{done: make(chan struct{}), security: security}
 	desktopRequest.Store(outcome)
 	defer desktopRequest.Store(nil)
 	thread, _, callErr := createNativeThread.Call(0, 0, desktopCallback, 0, 0, 0)
@@ -73,12 +77,12 @@ func desktopThreadEntry(uintptr) uintptr {
 	if outcome == nil {
 		return 1
 	}
-	outcome.desktop, outcome.err = createPrivateDesktopOnThread()
+	outcome.desktop, outcome.err = createPrivateDesktopOnThread(outcome.security)
 	close(outcome.done)
 	return 0
 }
 
-func createPrivateDesktopOnThread() (*privateDesktop, error) {
+func createPrivateDesktopOnThread(security string) (*privateDesktop, error) {
 	random := make([]byte, 16)
 	if _, err := rand.Read(random); err != nil {
 		return nil, err
@@ -88,7 +92,7 @@ func createPrivateDesktopOnThread() (*privateDesktop, error) {
 	// Restricting SIDs/low integrity cannot use the inherited host desktop.
 	// Authenticated Users permits both ACL passes; grant access only to fresh
 	// noninteractive UI objects, never to the parent's station or desktop.
-	sd, err := windows.SecurityDescriptorFromString("O:BAG:BAD:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;AU)S:(ML;;NW;;;LW)")
+	sd, err := windows.SecurityDescriptorFromString(security)
 	if err != nil {
 		return nil, err
 	}

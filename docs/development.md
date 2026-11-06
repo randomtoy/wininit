@@ -16,8 +16,8 @@ The datasource, hostname, and identity packages are independently testable behin
 small internal interfaces. Tests must cover default-disabled and explicitly
 disabled behavior, including a state checkpoint from an older enabled run.
 Configuration tests must prove that older version 1 files keep newly introduced
-plugins disabled. State tests must cover deterministic schema version 1 to version 2
-migration.
+plugins disabled. State tests must cover deterministic schema 1/2 to schema 3
+migration without inventing script execution evidence.
 
 Lifecycle tests must also verify one reconciliation per process start, no
 automatic retry loop, configuration-hash gating of saved status, fresh metadata
@@ -53,16 +53,17 @@ go test ./plugins/datasource/configdrive -run '^$' -fuzz '^FuzzParse$' -fuzztime
 Datasource tests cover missing, malformed, duplicate, oversized, and symlinked
 metadata; dated-version selection; FQDN normalization; source ambiguity; and
 disabled execution. Windows tests enumerate labels without mounting media or
-changing a hostname. MSI smoke verifies all six logical plugins remain
+changing a hostname. MSI smoke verifies all seven logical plugins remain
 disabled and installed ProgramData/configuration DACLs are protected.
 
-`make build` produces `dist/wininit-windows-amd64.exe` and the separate
-`dist/wininit-plugin-configdrive-windows-amd64.exe`. `make package` is the
-release-style Windows target and produces both executables, MSI, and
+`make build` produces `dist/wininit-windows-amd64.exe`, the separate
+`dist/wininit-plugin-configdrive-windows-amd64.exe`, and
+`dist/wininit-plugin-powershell-windows-amd64.exe`. `make package` is the
+release-style Windows target and produces all three executables, MSI, and
 `SHA256SUMS`. Consult the build script output if the local WiX dependency is
 missing or has the wrong version.
 
-Packaging also verifies that `SHA256SUMS` matches all three artifacts and uses
+Packaging also verifies that `SHA256SUMS` matches all four artifacts and uses
 portable LF line endings.
 
 The WiX project contains `<AcceptEula>wix7</AcceptEula>`, the acknowledgement
@@ -100,7 +101,7 @@ protoc 33.4 and pinned generators:
 ```sh
 go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12
 go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.0
-protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative sdk/datasource/v1/datasource.proto
+protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative sdk/datasource/v1/datasource.proto sdk/userdata/v1/userdata.proto
 ```
 
 Ensure the Go binary directory is on PATH. Keep wire changes compatible within
@@ -176,3 +177,12 @@ currently pending and unexecuted because no suitable VM is available. Record
 the OS build, hypervisor, source commit, logs, and every acceptance result when
 it is eventually run; do not convert the written procedure itself into a claim
 of successful rename or restart validation.
+
+## Separate PowerShell process
+
+`make build` emits the PowerShell EXE separately. CI runs
+`scripts/check-plugin-boundary.sh` to prevent its executor from entering the
+agent dependency graph. Native Windows tests launch the actual OS interpreter;
+portable tests cover source/envelope validation, RPC redaction and durable
+one-shot recovery. See [operator policy](powershell-user-data.md) and ADR 0013.
+Never reboot a guest unless that specific acceptance run authorizes it.

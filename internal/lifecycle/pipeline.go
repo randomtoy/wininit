@@ -75,6 +75,7 @@ func (e *Engine) reconcile(ctx context.Context, current *state.State) error {
 			return e.pluginFailure(ctx, current, name, errors.New("multiple enabled datasources are available; disable all but the intended datasource"))
 		}
 		metadata, found = candidate, true
+		metadata.Datasource = name
 		current.Plugins[name] = state.PluginState{Status: "completed"}
 	}
 	if !found {
@@ -113,7 +114,13 @@ func (e *Engine) reconcile(ctx context.Context, current *state.State) error {
 		if err := e.save(ctx, current); err != nil {
 			return err
 		}
-		result, err := registration.Plugin.Apply(ctx, metadata)
+		var result plugin.Result
+		var err error
+		if once, ok := registration.Plugin.(plugin.OnceProvisioner); ok {
+			result, err = e.executeOnce(ctx, current, once, metadata)
+		} else {
+			result, err = registration.Plugin.Apply(ctx, metadata)
+		}
 		if err != nil {
 			return e.pluginFailure(ctx, current, name, err)
 		}
@@ -124,17 +131,17 @@ func (e *Engine) reconcile(ctx context.Context, current *state.State) error {
 			anyCompleted = true
 		}
 		checkpoint.RebootRequired = result.RebootRequired
+		checkpoint.Reused = result.Reused
 		if result.RebootRequired {
 			anyRebootRequired = true
 			checkpoint.Status = "reboot_required"
-			current.Provisioning = "reboot_required"
 			current.Checkpoint = name
 		}
 		current.Plugins[name] = checkpoint
 		if err := e.save(ctx, current); err != nil {
 			return err
 		}
-		e.logger.InfoContext(ctx, "provisioner reconciled", "plugin", name, "changed", result.Changed, "reboot_required", result.RebootRequired)
+		e.logger.InfoContext(ctx, "provisioner reconciled", "plugin", name, "changed", result.Changed, "reboot_required", result.RebootRequired, "reused", result.Reused)
 	}
 	switch {
 	case anyRebootRequired:
@@ -148,7 +155,7 @@ func (e *Engine) reconcile(ctx context.Context, current *state.State) error {
 }
 
 func (e *Engine) pluginFailure(ctx context.Context, current *state.State, name string, cause error) error {
-	if ctx.Err() != nil && (errors.Is(cause, context.Canceled) || errors.Is(cause, context.DeadlineExceeded)) {
+	if rootCancellationOnly(ctx, cause) {
 		return cause
 	}
 	checkpoint := current.Plugins[name]

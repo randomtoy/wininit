@@ -35,7 +35,7 @@ Usage:
   wininit collect-logs [--config PATH] [--output PATH]
   wininit service install|uninstall|start|stop|status
 
-Datasource, hostname, local user, password policy and SSH key plugins require explicit enablement.
+Datasource, hostname, identity and separate PowerShell plugins require explicit enablement.
 MSI-managed installations must use MSI repair/uninstall for registration changes.
 `
 
@@ -300,6 +300,7 @@ func applySavedPluginStatus(report *Status, current state.State, configurationHa
 		if report.Plugins[index].Enabled {
 			if checkpoint, ok := current.Plugins[report.Plugins[index].Name]; ok {
 				report.Plugins[index].Status = checkpoint.Status
+				report.Plugins[index].Reused = checkpoint.Reused
 			}
 		}
 	}

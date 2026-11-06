@@ -13,12 +13,38 @@ var ErrUnavailable = errors.New("datasource unavailable")
 type Metadata struct {
 	InstanceID    string
 	LocalHostname string
+	// Datasource is assigned by the host after unambiguous selection.
+	Datasource string
 }
 
 type Result struct {
 	Changed        bool
 	RebootRequired bool
 	Skipped        bool
+	Reused         bool
+}
+
+// OnceProvisioner separates read-only preparation from journaled execution.
+// Apply must refuse direct execution outside this lifecycle contract.
+type OnceProvisioner interface {
+	Provisioner
+	ExecutionIdentity(Metadata) (key, approvalHash string, err error)
+	Prepare(context.Context, Metadata) (PreparedExecution, error)
+}
+
+type PreparedExecution struct {
+	Skipped bool
+	Execute func(context.Context) (ExecutionResult, error)
+	Close   func()
+}
+
+// ExecutionResult never carries script text, output, or remote error payloads.
+type ExecutionResult struct {
+	Result
+	HasExitCode bool
+	ExitCode    uint32
+	OutputBytes uint64
+	FailureCode string
 }
 
 type Datasource interface {
@@ -46,6 +72,7 @@ type Descriptor struct {
 	Kind    string `json:"kind"`
 	Enabled bool   `json:"enabled"`
 	Status  string `json:"status"`
+	Reused  bool   `json:"reused,omitempty"`
 }
 
 type Catalog struct {

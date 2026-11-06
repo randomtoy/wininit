@@ -16,7 +16,7 @@ import (
 	"github.com/randomtoy/wininit/internal/plugin"
 )
 
-var fixtureBinary, configDriveBinary string
+var fixtureBinary, configDriveBinary, powerShellBinary string
 
 func TestMain(m *testing.M) {
 	directory, err := os.MkdirTemp("", "wininit-plugin-test-")
@@ -28,7 +28,8 @@ func TestMain(m *testing.M) {
 		suffix = ".exe"
 	}
 	fixtureBinary, configDriveBinary = filepath.Join(directory, "fixture"+suffix), filepath.Join(directory, "configdrive"+suffix)
-	for _, build := range []struct{ path, source string }{{fixtureBinary, "./tests/fixtures/pluginprocess"}, {configDriveBinary, "./cmd/wininit-plugin-configdrive"}} {
+	powerShellBinary = filepath.Join(directory, "powershell"+suffix)
+	for _, build := range []struct{ path, source string }{{fixtureBinary, "./tests/fixtures/pluginprocess"}, {configDriveBinary, "./cmd/wininit-plugin-configdrive"}, {powerShellBinary, "./cmd/wininit-plugin-powershell"}} {
 		cmd := exec.Command("go", "build", "-o", build.path, build.source)
 		cmd.Dir = filepath.Join("..", "..")
 		if data, err := cmd.CombinedOutput(); err != nil {
@@ -50,6 +51,9 @@ func processSettings(t *testing.T, mode string) Settings {
 	source := fixtureBinary
 	if mode == "configdrive" {
 		source = configDriveBinary
+	}
+	if mode == "powershell" {
+		source = powerShellBinary
 	}
 	data, err := os.ReadFile(source)
 	if err != nil {

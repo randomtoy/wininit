@@ -40,6 +40,10 @@ func configuredPlugins(cfg config.Config) plugin.Catalog {
 			{Enabled: cfg.Plugins.Provisioners.LocalUsers.Enabled, Plugin: localusers.New(cfg.Plugins.Provisioners.LocalUsers.Users, accounts)},
 			{Enabled: cfg.Plugins.Provisioners.AuthorizedKeys.Enabled, Plugin: authorizedkeys.New(cfg.Plugins.Provisioners.AuthorizedKeys.Users, accounts)},
 			{Enabled: cfg.Plugins.Provisioners.Hostname.Enabled, Plugin: hostname.New(platformhostname.New())},
+			{Enabled: cfg.Plugins.Provisioners.PowerShellUserData.Enabled, Plugin: pluginprocess.NewPowerShell(cfg.Plugins.Provisioners.PowerShellUserData, map[string]pluginprocess.SourceSettings{
+				"nocloud":     {Directory: cfg.Plugins.Datasources.NoCloud.SeedDirectory, DiscoverVolumes: cfg.Plugins.Datasources.NoCloud.DiscoverVolumes},
+				"configdrive": {Directory: drive.SeedDirectory, DiscoverVolumes: drive.DiscoverVolumes},
+			})},
 		},
 	}
 }
@@ -52,7 +56,7 @@ func pluginConfigurationHash(cfg config.Config) string {
 
 func configuredProvisioning(cfg config.Config) string {
 	if !cfg.Plugins.Datasources.NoCloud.Enabled && !cfg.Plugins.Datasources.ConfigDrive.Enabled && !cfg.Plugins.Provisioners.Hostname.Enabled &&
-		!cfg.Plugins.Provisioners.LocalUsers.Enabled && !cfg.Plugins.Provisioners.PasswordPolicy.Enabled && !cfg.Plugins.Provisioners.AuthorizedKeys.Enabled {
+		!cfg.Plugins.Provisioners.LocalUsers.Enabled && !cfg.Plugins.Provisioners.PasswordPolicy.Enabled && !cfg.Plugins.Provisioners.AuthorizedKeys.Enabled && !cfg.Plugins.Provisioners.PowerShellUserData.Enabled {
 		return "disabled"
 	}
 	return "pending"
