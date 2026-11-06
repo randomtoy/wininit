@@ -28,6 +28,7 @@ import (
 )
 
 func TestWindowsActualPowerShellExecution(t *testing.T) {
+	native := processSettings(t, "native-exit23")
 	for _, test := range []struct {
 		name, body string
 		exit       uint32
@@ -35,7 +36,8 @@ func TestWindowsActualPowerShellExecution(t *testing.T) {
 	}{
 		{"success", `if('ж' -cne [string][char]0x0436){exit 18}; if([Environment]::CommandLine.Contains('fixture-private')){exit 19}; [Console]::Write('fixture-private'); exit 0`, 0, ""},
 		{"terminating-error", `throw 'fixture-private'`, 1, "exit code"},
-		{"native-error", `& "$env:SystemRoot\System32\cmd.exe" /c exit 23`, 23, "exit code"},
+		{"native-error", `& "$env:SystemRoot\System32\cmd.exe" /d /c exit 23`, 23, "exit code"},
+		{"native-exe-error", `& '` + strings.ReplaceAll(native.Executable, "'", "''") + `'`, 23, "exit code"},
 		{"reboot-request", `exit 3010`, 3010, ""},
 		{"flood", `[Console]::Write(('fixture-private' * 10000))`, 0, "output limit"},
 	} {
@@ -205,7 +207,6 @@ func TestWindowsPowerShellInterpreterImageBoundary(t *testing.T) {
 
 func TestWindowsPowerShellCancellationKillsNativeDescendant(t *testing.T) {
 	settings := psSettings(t, "powershell")
-	settings.Process.TimeoutSeconds = 60
 	settings.Process.TimeoutSeconds = 60
 	seed := t.TempDir()
 	pidFile := filepath.Join(seed, "child.pid")

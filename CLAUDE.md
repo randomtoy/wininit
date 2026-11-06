@@ -469,7 +469,8 @@ Registry checkpoints, success/failure replay prevention, and descendant cleanup
 on cancellation. No test invokes reboot or hostname mutation on shared CI.
 
 The constant PowerShell bootstrap dot-sources the approved ScriptBlock in its
-own process scope so the native LASTEXITCODE is preserved; test both native
+own process scope and initializes only global:LASTEXITCODE so a local variable
+does not shadow the native exit code; test both native
 nonzero exits and terminating errors. Native tests allow a cold interpreter
 startup without changing configured production session deadlines.
 

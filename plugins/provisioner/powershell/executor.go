@@ -11,7 +11,7 @@ import (
 
 // Script text is sent only through an owned stdin pipe. The command line is a
 // constant bootstrap, never an interpolated/encoded copy of user-data.
-const bootstrap = `$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; [Console]::InputEncoding=New-Object System.Text.UTF8Encoding($false,$true); try { $source=[Console]::In.ReadToEnd(); $LASTEXITCODE=0; . ([ScriptBlock]::Create($source)); exit $LASTEXITCODE } catch { exit 1 }`
+const bootstrap = `$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; [Console]::InputEncoding=New-Object System.Text.UTF8Encoding($false,$true); try { $source=[Console]::In.ReadToEnd(); $global:LASTEXITCODE=0; . ([ScriptBlock]::Create($source)); exit $LASTEXITCODE } catch { exit 1 }`
 
 func bootstrapArguments() []string {
 	words := utf16.Encode([]rune(bootstrap))
