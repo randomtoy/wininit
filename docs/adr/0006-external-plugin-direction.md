@@ -3,6 +3,10 @@
 - Status: Proposed
 - Date: 2026-11-05
 
+Update 2026-11-06: [ADR 0012](0012-process-configdrive.md) supersedes this
+deferral for an explicitly trusted ConfigDrive process with an experimental
+v1 SDK. The broader third-party/provisioner protocol remains proposed.
+
 ## Context
 
 Future deployments need independently shipped datasources and provisioners.

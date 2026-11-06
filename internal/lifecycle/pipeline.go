@@ -106,7 +106,7 @@ func (e *Engine) reconcile(ctx context.Context, current *state.State) error {
 			current.Plugins[name] = state.PluginState{Status: "disabled"}
 			continue
 		}
-		sum := sha256.Sum256([]byte(metadata.InstanceID + "\x00" + name + "\x00" + metadata.LocalHostname))
+		sum := sha256.Sum256([]byte(metadata.InstanceID + "\x00" + name + "\x00" + metadata.LocalHostname + "\x00" + e.configurationHash))
 		checkpoint := state.PluginState{Status: "running", InputHash: hex.EncodeToString(sum[:])}
 		current.Plugins[name] = checkpoint
 		current.Attempts[name]++

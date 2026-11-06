@@ -1,0 +1,27 @@
+syntax = "proto3";
+package wininit.datasource.v1;
+option go_package = "github.com/randomtoy/wininit/sdk/datasource/v1;datasourcev1";
+
+// Experimental process API v1. Unknown versions fail closed.
+service Datasource {
+  rpc Describe(DescribeRequest) returns (Identity);
+  rpc Discover(DiscoverRequest) returns (DiscoverResponse);
+}
+message DescribeRequest {}
+message Identity {
+  uint32 protocol_version = 1;
+  string name = 2;
+  string kind = 3;
+}
+message DiscoverRequest {
+  string seed_directory = 1;
+  bool discover_volumes = 2;
+}
+message Metadata {
+  string instance_id = 1;
+  string local_hostname = 2;
+}
+message DiscoverResponse {
+  bool unavailable = 1;
+  Metadata metadata = 2;
+}

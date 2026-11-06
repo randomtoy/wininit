@@ -34,12 +34,12 @@ guests. It also does not test the Windows Server 2022 target.
 | Capability | Status |
 | --- | --- |
 | Hostname | Implemented conservatively; disabled by default |
-| Users and groups | Planned |
-| Password policy | Planned |
-| SSH authorized keys | Planned |
+| Standard local users / initial passwords | Implemented; disabled by default; groups/domain/admin accounts excluded |
+| Local SAM password/lockout policy | Implemented; disabled by default; domain-joined hosts refused |
+| Per-user SSH managed key blocks | Implemented; disabled by default; sshd setup/login unverified |
 | PowerShell user-data | Planned |
 | Hostname restart checkpoint/reconciliation | Implemented; no automatic restart |
-| External plugins | Planned; no stable protocol yet |
+| External ConfigDrive | Experimental v1 gRPC process; opt-in; trusted binaries only |
 
 NoCloud accepts `instance-id` and optional `local-hostname`; ConfigDrive accepts
 `uuid` and optional `hostname`, with explicit FQDN-to-first-label normalization.
@@ -57,3 +57,5 @@ discovery, rename, administrator restart, and resume reconciliation is pending.
 The foundation release target is an unsigned Windows AMD64 executable and MSI.
 The MSI is intended for per-machine unattended installation and upgrade. Code
 signing, provenance, and SBOM publication are release-hardening roadmap items.
+The optional ConfigDrive executable is a separate artifact in the same
+repository and checksum manifest; MSI does not install it automatically.

@@ -35,7 +35,7 @@ Usage:
   wininit collect-logs [--config PATH] [--output PATH]
   wininit service install|uninstall|start|stop|status
 
-NoCloud, ConfigDrive and hostname plugins require explicit enablement in configuration.
+Datasource, hostname, local user, password policy and SSH key plugins require explicit enablement.
 MSI-managed installations must use MSI repair/uninstall for registration changes.
 `
 

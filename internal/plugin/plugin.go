@@ -1,5 +1,5 @@
-// Package plugin defines internal contracts for built-in initialization plugins.
-// These interfaces are not the future external process protocol or public SDK.
+// Package plugin defines the lifecycle's internal plugin contracts.
+// Process plugins use the separate versioned sdk/datasource/v1 wire API.
 package plugin
 
 import (

@@ -33,9 +33,29 @@ plugins:
       enabled: false
       seed_directory: ''
       discover_volumes: true
+      execution: builtin
+      process:
+        executable: ''
+        sha256: ''
+        timeout_seconds: 15
   provisioners:
     hostname:
       enabled: false
+    password_policy:
+      enabled: false
+      minimum_length: 14
+      maximum_age_days: 90
+      minimum_age_days: 1
+      history_length: 24
+      lockout_threshold: 10
+      lockout_duration_minutes: 15
+      lockout_window_minutes: 15
+    local_users:
+      enabled: false
+      users: []
+    authorized_keys:
+      enabled: false
+      users: []
 reboot:
   policy: never
 ```
@@ -55,7 +75,12 @@ The complete serialized schema is:
 | `plugins.datasources.configdrive.enabled` | No | Opts into OpenStack ConfigDrive; defaults to `false`. |
 | `plugins.datasources.configdrive.seed_directory` | No | Local ConfigDrive root containing `openstack/`; defaults to empty. |
 | `plugins.datasources.configdrive.discover_volumes` | No | Permits mounted `config-2` ISO9660/FAT discovery; defaults to `true`. |
+| `plugins.datasources.configdrive.execution` | No | `builtin` (compatible default) or explicit `external` process. |
+| `plugins.datasources.configdrive.process` | External mode | Absolute `executable`, exact `sha256`, and `timeout_seconds` 1–60 (default 15). |
 | `plugins.provisioners.hostname.enabled` | No | Opts into hostname mutation; defaults to `false`. |
+| `plugins.provisioners.password_policy` | No | Separate `enabled: false` plus bounded SAM password/lockout fields shown above. |
+| `plugins.provisioners.local_users` | No | Separate `enabled: false` and `users` entries: `name`, `full_name`, `description`, `password_file`, `password_never_expires`. |
+| `plugins.provisioners.authorized_keys` | No | Separate `enabled: false` and `users` entries: `name` and `public_keys`. Empty keys revoke the managed block. |
 | `reboot.policy` | No | Must be `never`; restart is always administrator-controlled. |
 
 The default operational locations are conceptually:
@@ -78,11 +103,14 @@ overlap unrelated Registry values.
 
 ## Backward compatibility and enablement
 
-The built-in plugin additions do not change the configuration schema version.
+The plugin additions do not change the configuration schema version.
 A pre-existing version 1 file with no `plugins.datasources` or
 `plugins.provisioners` section remains valid and leaves all plugins disabled.
 An existing NoCloud configuration without a `configdrive` section keeps
 ConfigDrive disabled, without changing the configuration schema version.
+Existing enabled ConfigDrive files keep builtin execution. New identity
+sections remain disabled when omitted. See [identity inputs and password-file
+security](identity.md) and [external process settings](external-plugins.md).
 Installing or upgrading a new executable must not turn on metadata discovery or
 hostname mutation.
 

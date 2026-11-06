@@ -30,6 +30,9 @@ into general cloud-init behavior.
 - [x] State schema version 1 to version 2 migration
 - [x] Durable `reboot_required` checkpoint with no automatic restart
 - [x] Per-plugin enabled/disabled/runtime status
+- [x] Independently opt-in local users/initial passwords, SAM policy, SSH keys
+- [x] Optional ConfigDrive executable with experimental v1 protobuf/gRPC SDK
+- [x] Image pins, restricted Windows process lifecycle, and protected identity ACLs
 
 Items are part of the milestone contract. A repository revision is
 release-ready only when the corresponding tests and workflows pass; source
@@ -40,11 +43,10 @@ pending.
 
 - network metadata sources and EC2/legacy ConfigDrive layouts;
 - metadata keys beyond NoCloud `instance-id`/`local-hostname` and OpenStack `uuid`/`hostname`;
-- users, passwords, or SSH keys;
+- domain/admin accounts, group administration, and password rotation;
 - PowerShell user-data execution;
 - automatic restart orchestration;
-- external executable plugin execution;
-- a public protobuf/gRPC plugin API or Go SDK;
+- arbitrary third-party execution, external provisioners, or a stable general SDK;
 - real Windows Server 2022/2025 VM end-to-end verification; and
 - production code signing.
 

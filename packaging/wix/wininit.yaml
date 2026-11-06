@@ -15,8 +15,28 @@ plugins:
       enabled: false
       seed_directory: ''
       discover_volumes: true
+      execution: builtin
+      process:
+        executable: ''
+        sha256: ''
+        timeout_seconds: 15
   provisioners:
     hostname:
       enabled: false
+    password_policy:
+      enabled: false
+      minimum_length: 14
+      maximum_age_days: 90
+      minimum_age_days: 1
+      history_length: 24
+      lockout_threshold: 10
+      lockout_duration_minutes: 15
+      lockout_window_minutes: 15
+    local_users:
+      enabled: false
+      users: []
+    authorized_keys:
+      enabled: false
+      users: []
 reboot:
   policy: never

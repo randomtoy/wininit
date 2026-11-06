@@ -34,6 +34,7 @@
       <ComponentRef Id="ConfigurationComponent" />
       <ComponentRef Id="LogsDirectoryComponent" />
       <ComponentRef Id="PluginsDirectoryComponent" />
+      <ComponentRef Id="ProgramDataDirectoryComponent" />
     </Feature>
   </Package>
 
@@ -79,21 +80,35 @@
       <File Id="DefaultConfiguration"
             Source="$(var.ConfigurationFile)"
             Name="wininit.yaml"
-            KeyPath="yes" />
+            KeyPath="yes">
+        <PermissionEx Sddl="O:BAG:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)" />
+      </File>
     </Component>
 
     <Component Id="LogsDirectoryComponent"
                Directory="LOGSDIR"
                Guid="{230DAAB9-6D37-4D20-84C4-503FF02773E0}"
                Permanent="yes">
-      <CreateFolder />
+      <CreateFolder>
+        <PermissionEx Sddl="O:BAG:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)" />
+      </CreateFolder>
     </Component>
 
     <Component Id="PluginsDirectoryComponent"
                Directory="PLUGINSDIR"
                Guid="{0CFA6AEA-3281-4082-85CF-80C48AA8C9F9}"
                Permanent="yes">
-      <CreateFolder />
+      <CreateFolder>
+        <PermissionEx Sddl="O:BAG:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)" />
+      </CreateFolder>
+    </Component>
+    <Component Id="ProgramDataDirectoryComponent"
+               Directory="PROGRAMDATADIR"
+               Guid="{0A3BBCF8-F185-4B6A-860B-744B12D7BC84}"
+               Permanent="yes">
+      <CreateFolder>
+        <PermissionEx Sddl="O:BAG:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)" />
+      </CreateFolder>
     </Component>
   </Fragment>
 </Wix>

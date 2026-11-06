@@ -8,7 +8,7 @@ VM, domain member, or shared CI host.
 ## Prepare
 
 1. Take a VM snapshot and install the candidate MSI with verbose logging.
-2. Record the original active hostname and verify all three plugins are disabled in
+2. Record the original active hostname and verify all six logical plugins are disabled in
    `wininit.exe status --json`.
 3. Copy `tests/fixtures/nocloud/meta-data` to a local seed directory in the VM,
    or attach a FAT/ISO9660 volume labelled `CIDATA` with `meta-data` at its root.

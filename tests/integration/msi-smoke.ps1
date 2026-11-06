@@ -123,6 +123,25 @@ try {
     foreach ($path in @($executable, $configuration, $logsDirectory, $pluginsDirectory)) {
         if (-not (Test-Path -LiteralPath $path)) { throw "Expected installed path is missing: $path" }
     }
+    foreach ($path in @((Join-Path $env:ProgramData 'WinInit'), $configuration, $logsDirectory, $pluginsDirectory)) {
+        $acl = Get-Acl -LiteralPath $path
+        if (-not $acl.AreAccessRulesProtected) { throw "Installed ACL is not protected: $path" }
+        $owner = $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value
+        if ($owner -notin @('S-1-5-18', 'S-1-5-32-544')) { throw "Unexpected installed owner '$owner': $path" }
+        $rules = $acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier])
+        foreach ($rule in $rules) {
+            if ($rule.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or
+                $rule.IdentityReference.Value -notin @('S-1-5-18', 'S-1-5-32-544')) {
+                throw "Installed ACL grants unexpected access: $path"
+            }
+        }
+        foreach ($sid in @('S-1-5-18', 'S-1-5-32-544')) {
+            if (@($rules | Where-Object { $_.IdentityReference.Value -eq $sid -and
+                ($_.FileSystemRights -band [Security.AccessControl.FileSystemRights]::FullControl) -eq [Security.AccessControl.FileSystemRights]::FullControl }).Count -eq 0) {
+                throw "Installed ACL is missing full control for '$sid': $path"
+            }
+        }
+    }
     $managedBy = Get-ItemPropertyValue -LiteralPath $installationKey -Name 'ManagedBy' -ErrorAction Stop
     if ($managedBy -ne 'MSI') { throw "Unexpected MSI management marker '$managedBy'." }
     # The MSI marker already guarantees this key exists. New-Item -Force would
@@ -182,12 +201,18 @@ try {
         throw "Status reported provisioning '$($status.provisioning)', expected 'disabled'."
     }
     $plugins = @($status.plugins)
-    if ($plugins.Count -ne 3) {
-        throw "Status reported $($plugins.Count) plugins, expected disabled NoCloud, ConfigDrive, and hostname plugins."
+    if ($plugins.Count -ne 6) {
+        throw "Status reported $($plugins.Count) plugins, expected six independently disabled plugins."
     }
     $noCloud = @($plugins | Where-Object { $_.name -eq 'nocloud' -and $_.kind -eq 'datasource' })
     $hostname = @($plugins | Where-Object { $_.name -eq 'hostname' -and $_.kind -eq 'provisioner' })
     $configDrive = @($plugins | Where-Object { $_.name -eq 'configdrive' -and $_.kind -eq 'datasource' })
+    foreach ($name in @('password_policy', 'local_users', 'authorized_keys')) {
+        $entry = @($plugins | Where-Object { $_.name -eq $name -and $_.kind -eq 'provisioner' })
+        if ($entry.Count -ne 1 -or $entry[0].enabled -ne $false -or $entry[0].status -ne 'disabled') {
+            throw "Identity plugin '$name' was not reported exactly once as disabled."
+        }
+    }
     if ($noCloud.Count -ne 1 -or $noCloud[0].enabled -ne $false) {
         throw 'NoCloud datasource was not reported exactly once as disabled.'
     }

@@ -19,8 +19,7 @@ rename, and a durable administrator-managed restart checkpoint. Do not open or
 execute user-data.
 
 Implementation status: code and automated component/native integration tests
-are in this milestone. Both plugins remain disabled by default and external
-plugins remain deferred.
+are in this milestone. Both plugins remain disabled by default.
 
 Remaining exit criterion: repeated execution and reboot/checkpoint/resume must
 be validated against real Windows Server 2022 and 2025 guests. Until that is
@@ -47,8 +46,17 @@ are outside this milestone.
 Add users, password policy, and SSH authorized keys through idempotent Windows
 platform adapters.
 
+Implementation status: three independent disabled-by-default plugins manage
+standard local account creation/attributes, protected initial password files,
+bounded SAM password/lockout policy, and per-user SSH managed key blocks.
+Existing passwords and unmanaged keys survive reruns. Domain/admin accounts,
+password rotation, and sshd installation/configuration are outside this first
+local identity contract. See [identity](identity.md) and ADR 0011.
+
 Exit criteria: secrets are never placed in state, logs, or diagnostics; ACLs
 and rerun behavior are tested.
+Automated tests cover these component/native boundaries. Real Windows guest
+SSH login and complete provisioning acceptance remain pending.
 
 ## 5. PowerShell user-data
 
@@ -60,12 +68,21 @@ malicious-input tests cover command, path, and output boundaries.
 
 ## 6. External plugin protocol and Go SDK
 
-After the internal interfaces stabilize, define a versioned protobuf/gRPC
-handshake and Go SDK for datasource and provisioner processes.
+Define a versioned protobuf/gRPC handshake and Go SDK for datasource and
+provisioner processes.
+
+Implementation status: brought forward at the user's request for the first
+optional ConfigDrive process. The experimental v1 SDK and separate EXE stay
+in this repository with pinned-image verification, restricted Windows tokens,
+Job Object cleanup, local mTLS, deadlines, and redacted output. Built-in
+ConfigDrive remains the default for existing v1 files. See
+[external plugins](external-plugins.md) and ADR 0012.
 
 Exit criteria: compatibility policy, checksum/identity verification,
 least-privilege execution, deadlines, cancellation, process cleanup, and secret
 redaction are enforced and tested.
+General external provisioners, stable SDK promises, plugin registries, and
+hostile-code isolation remain future work.
 
 ## 7. End-to-end matrix and release hardening
 

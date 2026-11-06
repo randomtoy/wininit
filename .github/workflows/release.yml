@@ -125,6 +125,7 @@ jobs:
           path: |
             dist/wininit-windows-amd64.exe
             dist/wininit-windows-amd64.msi
+            dist/wininit-plugin-configdrive-windows-amd64.exe
             dist/SHA256SUMS
           if-no-files-found: error
           retention-days: 30
@@ -150,6 +151,7 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             dist/wininit-windows-amd64.exe \
             dist/wininit-windows-amd64.msi \
+            dist/wininit-plugin-configdrive-windows-amd64.exe \
             dist/SHA256SUMS \
             --verify-tag \
             --title "$GITHUB_REF_NAME" \

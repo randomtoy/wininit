@@ -7,24 +7,40 @@ import (
 
 	"github.com/randomtoy/wininit/internal/config"
 	platformhostname "github.com/randomtoy/wininit/internal/platform/hostname"
+	platformidentity "github.com/randomtoy/wininit/internal/platform/identity"
 	"github.com/randomtoy/wininit/internal/plugin"
+	"github.com/randomtoy/wininit/internal/pluginprocess"
 	"github.com/randomtoy/wininit/plugins/datasource/configdrive"
 	"github.com/randomtoy/wininit/plugins/datasource/nocloud"
+	"github.com/randomtoy/wininit/plugins/provisioner/authorizedkeys"
 	"github.com/randomtoy/wininit/plugins/provisioner/hostname"
+	"github.com/randomtoy/wininit/plugins/provisioner/localusers"
+	"github.com/randomtoy/wininit/plugins/provisioner/passwordpolicy"
 )
 
 // configuredPlugins only constructs plugin objects; constructors perform no IO.
 // The lifecycle consults Enabled before calling Discover or Apply.
 func configuredPlugins(cfg config.Config) plugin.Catalog {
+	drive := cfg.Plugins.Datasources.ConfigDrive
+	var drivePlugin plugin.Datasource = configdrive.New(drive.SeedDirectory, drive.DiscoverVolumes, configdrive.FindVolumes)
+	if drive.Execution == "external" {
+		drivePlugin = pluginprocess.NewConfigDrive(drive.Process, drive.SeedDirectory, drive.DiscoverVolumes)
+	}
+	accounts := platformidentity.New()
 	return plugin.Catalog{
 		Datasources: []plugin.DatasourceRegistration{{
 			Enabled: cfg.Plugins.Datasources.NoCloud.Enabled,
 			Plugin:  nocloud.New(cfg.Plugins.Datasources.NoCloud.SeedDirectory, cfg.Plugins.Datasources.NoCloud.DiscoverVolumes, nocloud.FindVolumes),
 		}, {
 			Enabled: cfg.Plugins.Datasources.ConfigDrive.Enabled,
-			Plugin:  configdrive.New(cfg.Plugins.Datasources.ConfigDrive.SeedDirectory, cfg.Plugins.Datasources.ConfigDrive.DiscoverVolumes, configdrive.FindVolumes),
+			Plugin:  drivePlugin,
 		}},
-		Provisioners: []plugin.ProvisionerRegistration{{Enabled: cfg.Plugins.Provisioners.Hostname.Enabled, Plugin: hostname.New(platformhostname.New())}},
+		Provisioners: []plugin.ProvisionerRegistration{
+			{Enabled: cfg.Plugins.Provisioners.PasswordPolicy.Enabled, Plugin: passwordpolicy.New(cfg.Plugins.Provisioners.PasswordPolicy.PasswordPolicy, accounts)},
+			{Enabled: cfg.Plugins.Provisioners.LocalUsers.Enabled, Plugin: localusers.New(cfg.Plugins.Provisioners.LocalUsers.Users, accounts)},
+			{Enabled: cfg.Plugins.Provisioners.AuthorizedKeys.Enabled, Plugin: authorizedkeys.New(cfg.Plugins.Provisioners.AuthorizedKeys.Users, accounts)},
+			{Enabled: cfg.Plugins.Provisioners.Hostname.Enabled, Plugin: hostname.New(platformhostname.New())},
+		},
 	}
 }
 
@@ -35,7 +51,8 @@ func pluginConfigurationHash(cfg config.Config) string {
 }
 
 func configuredProvisioning(cfg config.Config) string {
-	if !cfg.Plugins.Datasources.NoCloud.Enabled && !cfg.Plugins.Datasources.ConfigDrive.Enabled && !cfg.Plugins.Provisioners.Hostname.Enabled {
+	if !cfg.Plugins.Datasources.NoCloud.Enabled && !cfg.Plugins.Datasources.ConfigDrive.Enabled && !cfg.Plugins.Provisioners.Hostname.Enabled &&
+		!cfg.Plugins.Provisioners.LocalUsers.Enabled && !cfg.Plugins.Provisioners.PasswordPolicy.Enabled && !cfg.Plugins.Provisioners.AuthorizedKeys.Enabled {
 		return "disabled"
 	}
 	return "pending"
