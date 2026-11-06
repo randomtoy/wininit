@@ -47,6 +47,25 @@ func TestRegistrySystemSoftwareSecurity(t *testing.T) {
 	}
 }
 
+func TestRegistryCreatorOwnerTemplateWithTrustedOwner(t *testing.T) {
+	path := fmt.Sprintf(`SOFTWARE\WininitTests\creator-%d`, time.Now().UnixNano())
+	t.Cleanup(func() { _ = registry.DeleteKey(registry.LOCAL_MACHINE, path) })
+	key, _, err := registry.CreateKey(registry.LOCAL_MACHINE, path, registry.ALL_ACCESS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer key.Close()
+	registryTestACL(t, key, "O:BAG:BAD:P(A;CI;KA;;;CO)(A;;KA;;;SY)(A;;KA;;;BA)(A;;KR;;;BU)")
+	if err := trustedRegistryKey(key); err != nil {
+		t.Fatalf("rejected a creator template with a trusted owner: %v", err)
+	}
+	// A real untrusted write ACE remains unsafe alongside the template.
+	registryTestACL(t, key, "O:BAG:BAD:P(A;CI;KA;;;CO)(A;;KA;;;SY)(A;;KA;;;BA)(A;;KW;;;BU)")
+	if err := trustedRegistryKey(key); err == nil {
+		t.Fatal("creator template hid an actual untrusted writer")
+	}
+}
+
 func TestRegistryRejectsWritableJournalAndAncestors(t *testing.T) {
 	for _, ancestor := range []bool{false, true} {
 		t.Run(fmt.Sprintf("ancestor-%t", ancestor), func(t *testing.T) {

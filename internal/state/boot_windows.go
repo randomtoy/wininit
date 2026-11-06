@@ -22,7 +22,7 @@ func (s *RegistryStore) BootID(ctx context.Context) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	parent, err := registry.OpenKey(s.root, s.path, registry.CREATE_SUB_KEY|registry.QUERY_VALUE)
+	parent, err := s.openStateKey(ctx, registry.CREATE_SUB_KEY|registry.QUERY_VALUE, false)
 	if err != nil {
 		return "", fmt.Errorf("open boot marker parent: %w", err)
 	}

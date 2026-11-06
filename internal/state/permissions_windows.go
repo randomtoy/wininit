@@ -118,7 +118,16 @@ func trustedRegistryKey(key registry.Key) error {
 		if ace.Header.AceType != windows.ACCESS_ALLOWED_ACE_TYPE {
 			return fmt.Errorf("%w: unsupported access entry", ErrUnsafePermissions)
 		}
-		if uint32(ace.Mask)&mutation != 0 && !trusted((*windows.SID)(unsafe.Pointer(&ace.SidStart))) {
+		sid := (*windows.SID)(unsafe.Pointer(&ace.SidStart))
+		// SOFTWARE uses an inheritable CREATOR OWNER template, sometimes without
+		// INHERIT_ONLY. It is not an ordinary writer: Windows substitutes the
+		// creator SID when inheriting it, and every opened child's owner/ACL is
+		// independently validated. Never treat arbitrary creator/group SIDs as
+		// trusted principals or inherit this template into our protected keys.
+		if sid.IsWellKnown(windows.WinCreatorOwnerSid) && ace.Header.AceFlags&windows.CONTAINER_INHERIT_ACE != 0 {
+			continue
+		}
+		if uint32(ace.Mask)&mutation != 0 && !trusted(sid) {
 			return fmt.Errorf("%w: key or ancestor permits untrusted mutation", ErrUnsafePermissions)
 		}
 	}

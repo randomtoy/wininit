@@ -501,6 +501,10 @@ and Windows TrustedInstaller may own/mutate them; other principals may read.
 Create missing keys atomically with protected SYSTEM/Administrators ACLs. Reject
 unsafe existing keys without rewriting permissions or losing journal history.
 Validate the boot marker ACL too. HKCU remains an isolated storage-test facility.
+Allow the system SOFTWARE key's inheritable CREATOR OWNER placeholder while
+independently validating every actual child owner and mutation ACE; new state
+keys use explicit protected ACLs. Existing ancestors need only read access when
+updating a protected child, not an unnecessary CREATE_SUB_KEY handle right.
 
 Lifecycle cancellation must match the root context error. A private PowerShell
 session deadline has a distinct context cause and must retain failed/timeout
