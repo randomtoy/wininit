@@ -11,6 +11,7 @@ import (
 
 	"github.com/randomtoy/wininit/internal/plugin"
 	"github.com/randomtoy/wininit/internal/state"
+	"github.com/randomtoy/wininit/plugins/datasource/configdrive"
 	"github.com/randomtoy/wininit/plugins/datasource/nocloud"
 	hostnameplugin "github.com/randomtoy/wininit/plugins/provisioner/hostname"
 )
@@ -18,6 +19,114 @@ import (
 type testHostnamePlatform struct {
 	active, configured string
 	writes             int
+}
+
+func TestConfigDriveFallbackToHostnameAndResume(t *testing.T) {
+	t.Parallel()
+	seed, err := filepath.Abs(filepath.Join("..", "..", "tests", "fixtures", "configdrive"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine, store, noCloud, unusedProvisioner := pipeline(t, true, true)
+	noCloud.err = plugin.ErrUnavailable
+	platform := &testHostnamePlatform{active: "old-node", configured: "old-node"}
+	engine.catalog.Datasources = append(engine.catalog.Datasources, plugin.DatasourceRegistration{Enabled: true, Plugin: configdrive.New(seed, false, nil)})
+	engine.catalog.Provisioners = []plugin.ProvisionerRegistration{{Enabled: true, Plugin: hostnameplugin.New(platform)}}
+	current := state.Initial(time.Now())
+	if err := engine.reconcile(context.Background(), &current); err != nil {
+		t.Fatal(err)
+	}
+	if current.InstanceID != "5fbd2b18-441d-46b0-9efa-18e270af77d5" || current.Provisioning != "reboot_required" || platform.configured != "wininit-node" || platform.writes != 1 || noCloud.calls != 1 || unusedProvisioner.calls != 0 {
+		t.Fatalf("state=%#v platform=%#v", current, platform)
+	}
+	current, err = store.Load(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	platform.active = platform.configured
+	if err := engine.reconcile(context.Background(), &current); err != nil {
+		t.Fatal(err)
+	}
+	if current.Provisioning != "completed" || platform.writes != 1 {
+		t.Fatalf("resumed state=%#v writes=%d", current, platform.writes)
+	}
+}
+
+func TestDisabledConfigDriveNeverDiscoversOrResumes(t *testing.T) {
+	t.Parallel()
+	engine, _, _, provisioner := pipeline(t, false, true)
+	engine.catalog.Datasources = append(engine.catalog.Datasources, plugin.DatasourceRegistration{Enabled: false, Plugin: configdrive.New("", true, func(context.Context) ([]string, error) {
+		t.Fatal("disabled ConfigDrive enumerated drives")
+		return nil, nil
+	})})
+	current := state.Initial(time.Now())
+	current.Plugins = map[string]state.PluginState{"configdrive": {Status: "completed"}}
+	if err := engine.reconcile(context.Background(), &current); err != nil {
+		t.Fatal(err)
+	}
+	if provisioner.calls != 0 || current.Plugins["configdrive"].Status != "disabled" || current.Provisioning != "no_datasource" {
+		t.Fatalf("state=%#v provisioner calls=%d", current, provisioner.calls)
+	}
+}
+
+type configDriveCounter struct{ countingDatasource }
+
+func (*configDriveCounter) Name() string { return "configdrive" }
+
+func TestDatasourceSelectionNeverDependsOnCatalogOrder(t *testing.T) {
+	t.Parallel()
+	for _, reverse := range []bool{false, true} {
+		for _, instanceID := range []string{"vm-1", "other-instance"} {
+			engine, store, noCloud, provisioner := pipeline(t, true, true)
+			configDrive := &configDriveCounter{countingDatasource: countingDatasource{metadata: plugin.Metadata{InstanceID: instanceID, LocalHostname: "other-node"}}}
+			engine.catalog.Datasources = append(engine.catalog.Datasources, plugin.DatasourceRegistration{Enabled: true, Plugin: configDrive})
+			if reverse {
+				engine.catalog.Datasources[0], engine.catalog.Datasources[1] = engine.catalog.Datasources[1], engine.catalog.Datasources[0]
+			}
+			current := state.Initial(time.Now())
+			current.InstanceID = "previous-instance"
+			if err := engine.reconcile(context.Background(), &current); err == nil {
+				t.Fatal("multiple datasources accepted")
+			}
+			if provisioner.calls != 0 || noCloud.calls != 1 || configDrive.calls != 1 || current.InstanceID != "previous-instance" {
+				t.Fatalf("ambiguous sources changed state or ran provisioner: %#v calls=%d", current, provisioner.calls)
+			}
+			failed, err := store.Load(context.Background())
+			if err != nil || failed.Provisioning != "failed" {
+				t.Fatalf("missing durable selection failure: %#v %v", failed, err)
+			}
+		}
+	}
+}
+
+func TestMalformedDatasourceDoesNotFallBackToAnother(t *testing.T) {
+	t.Parallel()
+	engine, _, noCloud, provisioner := pipeline(t, true, true)
+	want := errors.New("malformed NoCloud metadata")
+	noCloud.err = want
+	configDrive := &configDriveCounter{}
+	engine.catalog.Datasources = append(engine.catalog.Datasources, plugin.DatasourceRegistration{Enabled: true, Plugin: configDrive})
+	current := state.Initial(time.Now())
+	if err := engine.reconcile(context.Background(), &current); !errors.Is(err, want) {
+		t.Fatalf("error=%v", err)
+	}
+	if configDrive.calls != 0 || provisioner.calls != 0 {
+		t.Fatal("invalid metadata was bypassed")
+	}
+}
+
+func TestUnavailableSecondDatasourceDoesNotMaskAvailableFirst(t *testing.T) {
+	t.Parallel()
+	engine, _, noCloud, provisioner := pipeline(t, true, true)
+	configDrive := &configDriveCounter{countingDatasource: countingDatasource{err: plugin.ErrUnavailable}}
+	engine.catalog.Datasources = append(engine.catalog.Datasources, plugin.DatasourceRegistration{Enabled: true, Plugin: configDrive})
+	current := state.Initial(time.Now())
+	if err := engine.reconcile(context.Background(), &current); err != nil {
+		t.Fatal(err)
+	}
+	if current.InstanceID != noCloud.metadata.InstanceID || current.Provisioning != "completed" || configDrive.calls != 1 || provisioner.calls != 1 {
+		t.Fatalf("state=%#v", current)
+	}
 }
 
 func (p *testHostnamePlatform) Snapshot(context.Context) (string, string, error) {

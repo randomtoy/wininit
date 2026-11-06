@@ -32,8 +32,15 @@ Add supported OpenStack ConfigDrive layouts and metadata normalization without
 leaking datasource-specific details into provisioners. Preserve independent
 datasource enablement and fail on ambiguous selection.
 
-Exit criteria: documented fixtures and real OpenStack/QEMU tests cover media
-selection, malformed input, and datasource precedence.
+Implementation status: the opt-in ConfigDrive plugin supports local seeds and
+mounted `config-2` FAT/ISO9660 volumes, versioned JSON, `uuid`, and normalized
+`hostname`. Fixture tests cover malformed input, disablement, fallback, source
+conflicts, and simulated hostname resume. No source precedence is guessed.
+
+Remaining exit criteria: validate media attachment, discovery, rename, and
+restart/resume against real OpenStack/QEMU Windows guests. That environment is
+not currently available. Networking, EC2 layouts, injected files, and user-data
+are outside this milestone.
 
 ## 4. Identity and access provisioning
 

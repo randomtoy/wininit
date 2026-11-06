@@ -14,7 +14,7 @@ func TestDefaultPluginStatusAndConfigurationFingerprint(t *testing.T) {
 		t.Fatal("default configuration permits provisioning")
 	}
 	descriptors := configuredPlugins(cfg).Descriptors()
-	if len(descriptors) != 2 {
+	if len(descriptors) != 3 {
 		t.Fatalf("descriptors=%#v", descriptors)
 	}
 	for _, descriptor := range descriptors {
@@ -46,9 +46,30 @@ func TestSavedStatusCannotOverrideDisablementOrNewConfiguration(t *testing.T) {
 			report := Status{Provisioning: configuredProvisioning(cfg), Plugins: configuredPlugins(cfg).Descriptors()}
 			current := state.State{ConfigurationHash: tc.savedHash, Provisioning: "reboot_required", Plugins: map[string]state.PluginState{"hostname": {Status: "reboot_required", RebootRequired: true}}}
 			applySavedPluginStatus(&report, current, "current")
-			if report.Provisioning != tc.want || report.Plugins[1].Status != tc.want {
+			if report.Provisioning != tc.want {
 				t.Fatalf("report = %#v", report)
 			}
+			for _, descriptor := range report.Plugins {
+				if descriptor.Name == "hostname" && descriptor.Status != tc.want {
+					t.Fatalf("hostname descriptor = %#v", descriptor)
+				}
+			}
 		})
+	}
+}
+
+func TestConfigDriveIsIndependentlyEnabledAndReported(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	previousHash := pluginConfigurationHash(cfg)
+	cfg.Plugins.Datasources.ConfigDrive.Enabled = true
+	if configuredProvisioning(cfg) != "pending" || pluginConfigurationHash(cfg) == previousHash {
+		t.Fatal("ConfigDrive enablement was not reflected in status or fingerprint")
+	}
+	for _, descriptor := range configuredPlugins(cfg).Descriptors() {
+		want := descriptor.Name == "configdrive"
+		if descriptor.Enabled != want {
+			t.Fatalf("unexpected plugin enablement: %#v", descriptor)
+		}
 	}
 }

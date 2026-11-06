@@ -3,7 +3,7 @@
 ## Objective
 
 The foundation provides the production-shaped host. The next milestone adds a
-narrow, independently opt-in NoCloud-to-hostname pipeline without expanding
+narrow, independently opt-in metadata-to-hostname pipeline without expanding
 into general cloud-init behavior.
 
 ## Included
@@ -21,9 +21,11 @@ into general cloud-init behavior.
 - [x] CI and tag-based release workflows
 - [x] Architecture, operations, security, and contribution documentation
 - [x] Internal built-in `Datasource` and `Provisioner` boundaries
-- [x] Independently disabled-by-default NoCloud and hostname configuration
+- [x] Independently disabled-by-default NoCloud, ConfigDrive, and hostname configuration
 - [x] NoCloud `instance-id` and optional `local-hostname` parsing
 - [x] Explicit seed folder and unambiguous mounted `CIDATA` discovery
+- [x] ConfigDrive `config-2` discovery and bounded OpenStack JSON metadata
+- [x] Version selection, FQDN normalization, and ambiguous-datasource rejection
 - [x] Conservative, domain-aware, idempotent hostname provisioner
 - [x] State schema version 1 to version 2 migration
 - [x] Durable `reboot_required` checkpoint with no automatic restart
@@ -36,8 +38,8 @@ pending.
 
 ## Explicitly excluded
 
-- OpenStack ConfigDrive and network metadata sources;
-- metadata keys beyond required `instance-id` and optional `local-hostname`;
+- network metadata sources and EC2/legacy ConfigDrive layouts;
+- metadata keys beyond NoCloud `instance-id`/`local-hostname` and OpenStack `uuid`/`hostname`;
 - users, passwords, or SSH keys;
 - PowerShell user-data execution;
 - automatic restart orchestration;
@@ -51,7 +53,7 @@ The excluded work is tracked in the [roadmap](roadmap.md).
 ## Release acceptance
 
 A release requires passing Go validation, Windows cross-build, configuration
-gating and state migration tests, NoCloud/hostname tests, native Windows state
+gating and state migration tests, NoCloud/ConfigDrive/hostname tests, native Windows state
 tests, MSI construction/validation, and the documented elevated smoke tests
 when the runner permits them. Any skipped native or real-VM check must be
 visible in release notes and must not be described as successful.

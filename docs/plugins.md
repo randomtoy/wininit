@@ -6,7 +6,7 @@
 provisioners. These are ordinary packages compiled into `wininit.exe`; they are
 not external executables, do not use gRPC, and are not a public plugin SDK.
 
-Every plugin is independently opt-in. Both built-ins are disabled by default,
+Every plugin is independently opt-in. All three built-ins are disabled by default,
 including for configuration files created before these fields existed. The
 pipeline executes enabled plugins only. Disabling a plugin in the current
 configuration takes priority over any pending plugin or reboot checkpoint in
@@ -27,6 +27,10 @@ plugins:
   directory: 'C:\ProgramData\WinInit\plugins'
   datasources:
     nocloud:
+      enabled: false
+      seed_directory: ''
+      discover_volumes: true
+    configdrive:
       enabled: false
       seed_directory: ''
       discover_volumes: true
@@ -89,6 +93,8 @@ plugins:
   datasources:
     nocloud:
       enabled: false
+    configdrive:
+      enabled: false
   provisioners:
     hostname:
       enabled: false
@@ -113,9 +119,81 @@ one YAML mapping. YAML aliases, duplicate supported keys, multiple documents,
 excessive nesting, control characters, and overlong identifiers are rejected.
 Unknown keys are ignored; they do not expand the provisioning contract.
 
-Additional cloud-init keys, network configuration, vendor data, OpenStack
-ConfigDrive layouts, and network metadata services are unsupported. Metadata is
+Additional cloud-init keys, network configuration, vendor data, and network
+metadata services are unsupported. OpenStack layouts use the separate
+ConfigDrive plugin described below. Metadata is
 untrusted input even when it comes from attached media.
+
+## OpenStack ConfigDrive datasource
+
+ConfigDrive is a separate plugin named `configdrive`, disabled by default even
+for existing NoCloud installations. To enable it with a local ConfigDrive root:
+
+```yaml
+version: 1
+plugins:
+  datasources:
+    nocloud:
+      enabled: false
+    configdrive:
+      enabled: true
+      seed_directory: 'D:\configdrive'
+      discover_volumes: false
+  provisioners:
+    hostname:
+      enabled: true
+```
+
+The directory must contain `openstack/<version>/meta_data.json`. To discover
+mounted media instead, set `seed_directory: ''` and `discover_volumes: true`.
+Only FAT/ISO9660 volumes labelled `config-2` (case-insensitively) qualify. Zero
+matches return unavailable; multiple matching volumes fail. Direct UNC paths,
+URLs, and relative seed paths are rejected by configuration validation. No
+network metadata request or automatic mount is performed.
+
+The newest supported dated directory present on the seed is selected, in this
+order: `2025-04-04`, `2020-10-14`, `2018-08-27`, `2017-02-22`, `2016-10-06`,
+`2016-06-30`, `2015-10-15`, `2013-10-17`, `2013-04-04`, `2012-08-10`.
+`openstack/latest` is a compatibility fallback only when none of those dated
+directories exists. Unknown dated directories are ignored. A selected
+directory without metadata, malformed JSON, or a symlink in the `openstack`,
+version, or file component is an error: the agent never silently downgrades to
+older metadata after such a failure.
+
+Only these fields are consumed:
+
+| OpenStack field | Internal field | Behavior |
+| --- | --- | --- |
+| `uuid` | `InstanceID` | Required nonempty string, at most 256 UTF-8 bytes, without surrounding whitespace or control characters. |
+| `hostname` | `LocalHostname` | Optional ASCII DNS name/FQDN; lowercase its first label and pass it to the hostname provisioner. |
+
+For example, `Worker-01.example.invalid` becomes `worker-01`. The datasource
+does not set a DNS suffix and never truncates a long label to fit Windows.
+The hostname provisioner's 15-character and nonnumeric-name checks still
+apply. A missing or empty `hostname` skips hostname work; the display `name`
+is never used as a fallback.
+
+Metadata must be a regular UTF-8 JSON file no larger than 64 KiB containing a
+single object. Duplicate keys, non-string consumed fields, invalid DNS names,
+and nesting deeper than 32 levels fail with sanitized errors. Unknown fields
+are validated and ignored. The plugin never opens `user_data`, `password`,
+`vendor_data*.json`, `network_data.json`, EC2 metadata, or injected file paths.
+These files and the raw metadata are never copied into diagnostics.
+
+## Selecting between datasource plugins
+
+The pipeline probes all enabled datasources before any provisioner runs.
+Exactly one must return metadata. An unavailable NoCloud seed can fall back to
+ConfigDrive, and an unavailable ConfigDrive can leave NoCloud selected. If
+both are available, provisioning fails without changing the host, regardless
+of catalog order or whether instance IDs happen to match. Disable the source
+you do not intend to use. A malformed source fails immediately; it is not
+treated as absent and cannot be bypassed with another source.
+
+This selects sources, not individual metadata fields: metadata from different
+datasources is never merged. An enabled but unavailable source is `skipped`;
+a disabled source is `disabled` and performs no I/O. All unavailable sources
+produce `no_datasource`. A selection conflict produces durable `failed` status.
 
 ## Hostname provisioner
 
@@ -145,8 +223,8 @@ process. The agent does not perform or claim that restart.
 
 State contains only the SHA-256 of normalized plugin input, not the raw target
 hostname or metadata. On the next run, if the hostname plugin is still enabled,
-the agent must rediscover the NoCloud seed and compare the active and configured
-Windows names with the fresh `local-hostname`. The seed must remain accessible
+the agent must rediscover the selected NoCloud or ConfigDrive seed and compare
+the active and configured Windows names with fresh normalized metadata. The seed must remain accessible
 through restart. If metadata changed, the new input is reconciled. If the seed
 is gone, provisioning reports `no_datasource`; the old hash cannot be replayed
 as a hostname.

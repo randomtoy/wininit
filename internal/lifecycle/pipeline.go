@@ -42,6 +42,13 @@ func (e *Engine) reconcile(ctx context.Context, current *state.State) error {
 	var metadata plugin.Metadata
 	found := false
 	for _, registration := range e.catalog.Datasources {
+		status := "disabled"
+		if registration.Enabled {
+			status = "pending"
+		}
+		current.Plugins[registration.Plugin.Name()] = state.PluginState{Status: status}
+	}
+	for _, registration := range e.catalog.Datasources {
 		name := registration.Plugin.Name()
 		if !registration.Enabled {
 			current.Plugins[name] = state.PluginState{Status: "disabled"}
@@ -61,9 +68,11 @@ func (e *Engine) reconcile(ctx context.Context, current *state.State) error {
 		if err != nil {
 			return e.pluginFailure(ctx, current, name, err)
 		}
+		if found {
+			return e.pluginFailure(ctx, current, name, errors.New("multiple enabled datasources are available; disable all but the intended datasource"))
+		}
 		metadata, found = candidate, true
 		current.Plugins[name] = state.PluginState{Status: "completed"}
-		break
 	}
 	if !found {
 		for _, registration := range e.catalog.Datasources {

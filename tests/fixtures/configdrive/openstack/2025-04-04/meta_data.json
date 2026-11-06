@@ -1,0 +1,6 @@
+{
+  "uuid": "5fbd2b18-441d-46b0-9efa-18e270af77d5",
+  "hostname": "WININIT-NODE.example.invalid",
+  "name": "Wininit ConfigDrive fixture",
+  "meta": {"test_only": true}
+}

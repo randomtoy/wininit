@@ -89,8 +89,47 @@ func TestPluginsAreOptInForExistingConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Plugins.Datasources.NoCloud.Enabled || cfg.Plugins.Provisioners.Hostname.Enabled {
+	if cfg.Plugins.Datasources.NoCloud.Enabled || cfg.Plugins.Datasources.ConfigDrive.Enabled || cfg.Plugins.Provisioners.Hostname.Enabled {
 		t.Fatal("old configuration silently enabled plugins")
+	}
+}
+
+func TestConfigDriveConfigurationAndBackwardCompatibility(t *testing.T) {
+	t.Parallel()
+	cfg, err := Load(writeConfig(t, "version: 1\nplugins:\n  datasources:\n    nocloud:\n      enabled: true\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Plugins.Datasources.NoCloud.Enabled || cfg.Plugins.Datasources.ConfigDrive.Enabled {
+		t.Fatal("old NoCloud configuration activated ConfigDrive")
+	}
+	cfg, err = Load(writeConfig(t, "version: 1\nplugins:\n  datasources:\n    configdrive:\n      enabled: true\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Plugins.Datasources.ConfigDrive.Enabled || cfg.Plugins.Datasources.NoCloud.Enabled || cfg.Plugins.Provisioners.Hostname.Enabled {
+		t.Fatal("ConfigDrive is not independently configurable")
+	}
+	if !cfg.Plugins.Datasources.ConfigDrive.DiscoverVolumes {
+		t.Fatal("missing safe volume discovery default")
+	}
+	cfg.Plugins.Datasources.ConfigDrive.DiscoverVolumes = false
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("enabled ConfigDrive accepted no source")
+	}
+	cfg.Plugins.Datasources.ConfigDrive.SeedDirectory = t.TempDir()
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	for _, directory := range []string{"relative", `\\server\share`, "https://metadata.invalid/", "//server/share"} {
+		cfg.Plugins.Datasources.ConfigDrive.SeedDirectory = directory
+		if err := cfg.Validate(); err == nil {
+			t.Errorf("accepted non-local seed_directory %q", directory)
+		}
+	}
+	cfg.Plugins.Datasources.ConfigDrive.Enabled = false
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("disabled ConfigDrive requires a usable source: %v", err)
 	}
 }
 
