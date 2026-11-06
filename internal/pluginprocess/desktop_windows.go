@@ -35,8 +35,39 @@ type privateDesktop struct {
 func newPrivateDesktop() (*privateDesktop, error) {
 	desktopCreationMu.Lock()
 	defer desktopCreationMu.Unlock()
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
+	type created struct {
+		desktop *privateDesktop
+		thread  windows.Handle
+		err     error
+	}
+	result := make(chan created, 1)
+	go func() {
+		// CreateDesktop attaches the calling thread. Exiting while still locked
+		// makes Go dispose of it; no UI-affiliated thread returns to the pool.
+		runtime.LockOSThread()
+		var thread windows.Handle
+		if err := windows.DuplicateHandle(windows.CurrentProcess(), windows.CurrentThread(), windows.CurrentProcess(), &thread, windows.SYNCHRONIZE, false, 0); err != nil {
+			result <- created{err: err}
+			return
+		}
+		desktop, err := createPrivateDesktopOnThread()
+		result <- created{desktop, thread, err}
+	}()
+	outcome := <-result
+	if outcome.thread != 0 {
+		_, err := windows.WaitForSingleObject(outcome.thread, windows.INFINITE)
+		windows.CloseHandle(outcome.thread)
+		if err != nil {
+			if outcome.desktop != nil {
+				outcome.desktop.close()
+			}
+			return nil, err
+		}
+	}
+	return outcome.desktop, outcome.err
+}
+
+func createPrivateDesktopOnThread() (*privateDesktop, error) {
 	random := make([]byte, 16)
 	if _, err := rand.Read(random); err != nil {
 		return nil, err

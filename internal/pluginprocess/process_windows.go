@@ -4,6 +4,8 @@ package pluginprocess
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
@@ -39,6 +41,10 @@ func prepareProcess(ctx context.Context, cmd *exec.Cmd) (*processControl, error)
 		return nil, err
 	}
 	defer original.Close()
+	user, err := original.GetTokenUser()
+	if err != nil {
+		return nil, err
+	}
 	admin, err := windows.CreateWellKnownSid(windows.WinBuiltinAdministratorsSid)
 	if err != nil {
 		return nil, err
@@ -52,6 +58,16 @@ func prepareProcess(ctx context.Context, cmd *exec.Cmd) (*processControl, error)
 		}
 		restricted = append(restricted, windows.SIDAndAttributes{Sid: sid})
 	}
+	random := make([]byte, 16)
+	if _, err := rand.Read(random); err != nil {
+		return nil, err
+	}
+	privateSIDText := fmt.Sprintf("S-1-5-21-%d-%d-%d-%d", binary.LittleEndian.Uint32(random[0:4]), binary.LittleEndian.Uint32(random[4:8]), binary.LittleEndian.Uint32(random[8:12]), binary.LittleEndian.Uint32(random[12:16]))
+	privateSID, err := windows.StringToSid(privateSIDText)
+	if err != nil {
+		return nil, err
+	}
+	restricted = append(restricted, windows.SIDAndAttributes{Sid: privateSID})
 	control := &processControl{ctx: ctx}
 	// A second ACL pass as ordinary principals prevents a SYSTEM caller from
 	// using its retained user SID to read SYSTEM/Admin-only host secrets.
@@ -60,6 +76,20 @@ func prepareProcess(ctx context.Context, cmd *exec.Cmd) (*processControl, error)
 		return nil, callErr
 	}
 	fail := func(err error) (*processControl, error) { control.close(); return nil, err }
+	// Runtime-created synchronization/thread objects must pass both ACL checks.
+	// Use a per-launch SID, not a grant to all ordinary users or restricted code.
+	defaultSD, err := windows.SecurityDescriptorFromString("D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;" + user.User.Sid.String() + ")(A;;GA;;;" + privateSIDText + ")")
+	if err != nil {
+		return fail(err)
+	}
+	dacl, _, err := defaultSD.DACL()
+	if err != nil {
+		return fail(err)
+	}
+	defaultACL := struct{ DACL *windows.ACL }{dacl}
+	if err := windows.SetTokenInformation(control.token, windows.TokenDefaultDacl, (*byte)(unsafe.Pointer(&defaultACL)), uint32(unsafe.Sizeof(defaultACL))); err != nil {
+		return fail(err)
+	}
 	low, err := windows.StringToSid("S-1-16-4096")
 	if err != nil {
 		return fail(err)

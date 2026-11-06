@@ -269,6 +269,9 @@ an actual run of that procedure.
   environment/stdin. Omit job UI limits because Windows disallows nesting them
   inside host jobs. Test actual restrictions on Windows; never bypass failed
   job assignment.
+- Give each launch a fresh private restricting SID and a matching default
+  object DACL so Windows/runtime-created objects pass both ACL checks without
+  granting object control to all ordinary users.
 - Restricted token handles need TOKEN_ADJUST_DEFAULT for low-integrity setup;
   validate the actual child token and current job, not just constructor flags.
 - Restricted children use a fresh noninteractive low-integrity window station
@@ -278,6 +281,9 @@ an actual run of that procedure.
   sorted scrubbed environment, and an explicit three-handle stdio allowlist.
   Keep the initial thread handle for job assignment before resume. Close UI,
   token, job, process, thread, pipe, and cancellation resources on every path.
+- CreateDesktop attaches its calling thread. Use a dedicated locked creator
+  goroutine, restore the process station, then let its OS thread terminate and
+  join it before returning handles. Never return a UI-affiliated thread to Go.
 - These are reviewed trusted-code plugins, not an AppContainer sandbox.
   Outbound networking and filesystem reads are not completely OS-isolated.
   Do not claim otherwise or enable arbitrary unreviewed code. Protocol endpoints

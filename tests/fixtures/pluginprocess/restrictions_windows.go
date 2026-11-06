@@ -44,9 +44,23 @@ func checkRestrictions(directory string) error {
 	for _, group := range restricted.AllGroups() {
 		seen[group.Sid.String()] = true
 	}
-	if len(seen) != 3 || !seen["S-1-1-0"] || !seen["S-1-5-11"] || !seen["S-1-5-32-545"] {
+	if len(seen) != 4 || !seen["S-1-1-0"] || !seen["S-1-5-11"] || !seen["S-1-5-32-545"] {
 		return errors.New("ordinary restricting SIDs are not installed")
 	}
+	privateSIDs := 0
+	for sid := range seen {
+		if strings.HasPrefix(sid, "S-1-5-21-") {
+			privateSIDs++
+		}
+	}
+	if privateSIDs != 1 {
+		return errors.New("per-launch restricting SID is missing")
+	}
+	event, err := windows.CreateEvent(nil, 1, 1, nil)
+	if err != nil {
+		return errors.New("restricted process cannot create its own synchronization objects")
+	}
+	windows.CloseHandle(event)
 	groups, err := token.GetTokenGroups()
 	if err != nil {
 		return err
