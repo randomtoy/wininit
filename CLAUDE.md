@@ -255,6 +255,8 @@ an actual run of that procedure.
   environment/stdin. Omit job UI limits because Windows disallows nesting them
   inside host jobs. Test actual restrictions on Windows; never bypass failed
   job assignment.
+- Restricted token handles need TOKEN_ADJUST_DEFAULT for low-integrity setup;
+  validate the actual child token and current job, not just constructor flags.
 - These are reviewed trusted-code plugins, not an AppContainer sandbox.
   Outbound networking and filesystem reads are not completely OS-isolated.
   Do not claim otherwise or enable arbitrary unreviewed code. Protocol endpoints

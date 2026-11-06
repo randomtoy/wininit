@@ -12,6 +12,13 @@ import (
 )
 
 func checkRestrictions(directory string) error {
+	var limits windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION
+	if err := windows.QueryInformationJobObject(0, windows.JobObjectExtendedLimitInformation, uintptr(unsafe.Pointer(&limits)), uint32(unsafe.Sizeof(limits)), nil); err != nil {
+		return err
+	}
+	if limits.BasicLimitInformation.ActiveProcessLimit != 1 || limits.BasicLimitInformation.LimitFlags&windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE == 0 || limits.ProcessMemoryLimit != 256<<20 {
+		return errors.New("job limits are not installed")
+	}
 	token := windows.GetCurrentProcessToken()
 	user, err := token.GetTokenUser()
 	if err != nil || user.User.Attributes&windows.SE_GROUP_USE_FOR_DENY_ONLY == 0 {

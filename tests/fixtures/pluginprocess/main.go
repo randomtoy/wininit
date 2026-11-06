@@ -33,7 +33,10 @@ func (f *fixture) Discover(ctx context.Context, request *datasourcev1.DiscoverRe
 	switch f.mode {
 	case "restrictions":
 		if err := checkRestrictions(request.GetSeedDirectory()); err != nil {
-			return nil, status.Error(codes.Internal, err.Error())
+			// This dedicated test mode returns only controlled assertion text,
+			// so a native failure identifies the exact restriction. Production
+			// providers never encode errors as metadata.
+			return &datasourcev1.DiscoverResponse{Metadata: &datasourcev1.Metadata{InstanceId: "restriction-failed: " + err.Error()}}, nil
 		}
 	case "hang":
 		<-ctx.Done()
