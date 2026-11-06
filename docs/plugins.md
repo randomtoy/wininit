@@ -194,6 +194,11 @@ This selects sources, not individual metadata fields: metadata from different
 datasources is never merged. An enabled but unavailable source is `skipped`;
 a disabled source is `disabled` and performs no I/O. All unavailable sources
 produce `no_datasource`. A selection conflict produces durable `failed` status.
+Enabled provisioners remain `pending` until a source is selected and they run.
+Each start clears their prior result, input hash, and reboot flag before
+discovery, so an absent, malformed, or conflicting source cannot make an old
+provisioner result appear current. Attempt counters retain their history until
+a different instance is selected.
 
 ## Hostname provisioner
 
@@ -240,8 +245,8 @@ Human-readable and JSON status include one descriptor per known plugin with
 `pending`, `running`, `completed`, `reboot_required`, `failed`, or `skipped`. A
 disabled plugin is not a failure and is not reported as executed. `pending`
 means the enabled plugin has no matching saved result, including after graceful
-cancellation. A reboot-required hostname result is not reported as completed
-provisioning.
+cancellation or while fresh datasource selection is blocked. A reboot-required
+hostname result is not reported as completed provisioning.
 
 Overall provisioning status distinguishes `disabled`, `pending`,
 `running`, `no_datasource`, `metadata_available`, `no_actions`, `completed`,

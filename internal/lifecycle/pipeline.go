@@ -32,12 +32,15 @@ func (e *Engine) reconcile(ctx context.Context, current *state.State) error {
 	current.Checkpoint = ""
 	enabledProvisioners := false
 	for _, registration := range e.catalog.Provisioners {
+		status := "disabled"
 		if registration.Enabled {
 			enabledProvisioners = true
 			current.Provisioning = "no_datasource"
-		} else {
-			current.Plugins[registration.Plugin.Name()] = state.PluginState{Status: "disabled"}
+			status = "pending"
 		}
+		// A result from an earlier run cannot confirm fresh metadata. Reset it
+		// before saving the new configuration hash or attempting discovery.
+		current.Plugins[registration.Plugin.Name()] = state.PluginState{Status: status}
 	}
 	var metadata plugin.Metadata
 	found := false
@@ -88,11 +91,7 @@ func (e *Engine) reconcile(ctx context.Context, current *state.State) error {
 		// checkpoints never carry execution intent into the new instance.
 		current.InstanceID = metadata.InstanceID
 		for _, registration := range e.catalog.Provisioners {
-			delete(current.Plugins, registration.Plugin.Name())
 			delete(current.Attempts, registration.Plugin.Name())
-			if !registration.Enabled {
-				current.Plugins[registration.Plugin.Name()] = state.PluginState{Status: "disabled"}
-			}
 		}
 	}
 	current.Provisioning = "metadata_available"

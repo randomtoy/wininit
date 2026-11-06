@@ -394,3 +394,58 @@ func TestUnavailableDatasourceNeverReportsCompleted(t *testing.T) {
 		t.Fatalf("state=%#v calls=%d", current, provisioner.calls)
 	}
 }
+
+func TestFreshDiscoveryDoesNotReuseProvisionerResult(t *testing.T) {
+	t.Parallel()
+	for _, previousStatus := range []string{"completed", "reboot_required"} {
+		for _, scenario := range []string{"unavailable", "malformed", "ambiguous", "disabled"} {
+			t.Run(previousStatus+"/"+scenario, func(t *testing.T) {
+				engine, store, noCloud, provisioner := pipeline(t, true, true)
+				provisioner.result = plugin.Result{RebootRequired: previousStatus == "reboot_required"}
+				current := state.Initial(time.Now())
+				if err := engine.reconcile(context.Background(), &current); err != nil {
+					t.Fatal(err)
+				}
+				if current.Plugins["hostname"].Status != previousStatus {
+					t.Fatalf("missing prior result: %#v", current)
+				}
+				provisioner.calls = 0
+				engine.configurationHash = "changed-datasources"
+				configDrive := &configDriveCounter{countingDatasource: countingDatasource{metadata: noCloud.metadata}}
+				engine.catalog.Datasources = append(engine.catalog.Datasources, plugin.DatasourceRegistration{Enabled: true, Plugin: configDrive})
+				wantProvisioning := "failed"
+				switch scenario {
+				case "unavailable":
+					noCloud.err, configDrive.err = plugin.ErrUnavailable, plugin.ErrUnavailable
+					wantProvisioning = "no_datasource"
+				case "malformed":
+					configDrive.err = errors.New("malformed ConfigDrive metadata")
+				case "ambiguous":
+					// Both sources are available, even with matching instance IDs.
+				case "disabled":
+					for index := range engine.catalog.Datasources {
+						engine.catalog.Datasources[index].Enabled = false
+					}
+					wantProvisioning = "no_datasource"
+				}
+				noCloud.before = func() {
+					saved, err := store.Load(context.Background())
+					if err != nil || saved.Plugins["hostname"] != (state.PluginState{Status: "pending"}) {
+						t.Fatalf("discovery reused prior hostname result: %#v %v", saved, err)
+					}
+				}
+				err := engine.reconcile(context.Background(), &current)
+				if (err != nil) != (wantProvisioning == "failed") {
+					t.Fatalf("reconcile() error=%v, want provisioning=%s", err, wantProvisioning)
+				}
+				saved, err := store.Load(context.Background())
+				if err != nil || saved.Provisioning != wantProvisioning || saved.ConfigurationHash != engine.configurationHash || saved.Plugins["hostname"] != (state.PluginState{Status: "pending"}) || saved.Checkpoint != "" {
+					t.Fatalf("stale provisioner result persisted: %#v %v", saved, err)
+				}
+				if provisioner.calls != 0 || saved.Attempts["hostname"] != 1 {
+					t.Fatalf("provisioner ran without a selected source: calls=%d attempts=%d", provisioner.calls, saved.Attempts["hostname"])
+				}
+			})
+		}
+	}
+}

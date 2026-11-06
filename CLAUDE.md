@@ -184,6 +184,10 @@ an actual run of that procedure.
 - On each process start, rediscover metadata and reconcile every enabled
   provisioner once. Retry failures only on a later process start; do not add an
   automatic retry or busy loop.
+- Before discovery or saving a new configuration hash, reset every enabled
+  provisioner to `pending` and clear its prior input hash/reboot flag. Missing,
+  malformed, or ambiguous sources must not expose an earlier result as current.
+  Preserve attempt counters until a different instance is selected.
 - The built-in NoCloud datasource accepts only required `instance-id` and
   optional `local-hostname`. It must never open or execute `user-data`.
 - Use either an explicit seed directory or one unambiguous, already-mounted
