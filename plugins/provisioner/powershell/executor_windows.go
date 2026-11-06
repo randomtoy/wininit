@@ -79,7 +79,7 @@ func (NativeExecutor) Run(parent context.Context, script []byte, limit uint32) (
 	}
 	cmd.Stdin = bytes.NewReader(script)
 	cmd.Stdout, cmd.Stderr = output, output
-	cmd.SysProcAttr = &windows.SysProcAttr{HideWindow: true}
+	cmd.SysProcAttr = &windows.SysProcAttr{HideWindow: true, CreationFlags: windows.CREATE_NO_WINDOW}
 	cmd.WaitDelay = time.Second
 	err = cmd.Run()
 	if parent.Err() != nil {

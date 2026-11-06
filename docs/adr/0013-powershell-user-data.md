@@ -79,3 +79,7 @@ reboot; actual kernel-boot/resume validation stays pending.
 - [Cloudbase user-data envelope conventions](https://cloudbase-init.readthedocs.io/en/latest/userdata.html)
 - [Windows PowerShell command-line behavior](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_powershell_exe?view=powershell-5.1)
 - [Registry key creation and volatile keys](https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regcreatekeyexw)
+
+Before Execute, started intent is committed and flushed into both alternating
+checkpoint slots. Recovery from one damaged slot therefore retains replay
+protection; terminal evidence may conservatively recover as started/unknown.

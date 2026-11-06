@@ -20,6 +20,7 @@ type onceFixture struct {
 	prepareCalls, executions, closes int
 	fail, skip, reboot               bool
 	cancel                           context.CancelFunc
+	inspect                          func(string)
 }
 
 func (*onceFixture) Name() string { return "powershell_user_data" }
@@ -41,6 +42,9 @@ func (p *onceFixture) Prepare(_ context.Context, m plugin.Metadata) (plugin.Prep
 		saved, err := p.store.Load(ctx)
 		if err != nil || saved.Executions[key].Status != "started" || saved.Provisioning != "running" {
 			p.t.Fatalf("missing durable intent before execution: %#v %v", saved, err)
+		}
+		if p.inspect != nil {
+			p.inspect(key)
 		}
 		p.executions++
 		if p.cancel != nil {
@@ -221,5 +225,34 @@ func TestOneShotJournalSurvivesInstanceSwitchAndRefusesEviction(t *testing.T) {
 	p.id = "new-work-at-capacity"
 	if err := engine.reconcile(context.Background(), &current); err == nil || p.executions != 2 || len(current.Executions) != state.MaxExecutions {
 		t.Fatal("full journal dispatched or evicted history")
+	}
+}
+
+// Two alternating slots model Registry recovery after a damaged active slot.
+type recoverySlots struct {
+	*state.MemoryStore
+	prior state.State
+	saves int
+}
+
+func (s *recoverySlots) Save(ctx context.Context, value state.State) error {
+	if s.saves > 0 {
+		s.prior, _ = s.MemoryStore.Load(ctx)
+	}
+	s.saves++
+	return s.MemoryStore.Save(ctx, value)
+}
+func TestOneShotBothRecoverySlotsContainIntentBeforeDispatch(t *testing.T) {
+	engine, store, p, current := onceEngine(t)
+	slots := &recoverySlots{MemoryStore: store}
+	engine.store = slots
+	p.store = slots
+	p.inspect = func(key string) {
+		if slots.prior.Executions[key].Status != "started" {
+			t.Fatal("fallback recovery could forget irreversible intent")
+		}
+	}
+	if err := engine.reconcile(context.Background(), &current); err != nil {
+		t.Fatal(err)
 	}
 }

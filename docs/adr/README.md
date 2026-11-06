@@ -18,7 +18,6 @@ direction and is not a compatibility promise.
 | [0010](0010-openstack-configdrive.md) | Accepted | ConfigDrive plugin and unambiguous datasource selection |
 | [0011](0011-local-identity-access.md) | Accepted | Opt-in local users, password policy, and SSH key management |
 | [0012](0012-process-configdrive.md) | Accepted | Optional verified ConfigDrive process and experimental SDK |
-
 | [0013](0013-powershell-user-data.md) | Accepted | Separate hash-approved PowerShell process and durable one-shot execution |
 
 ## Template

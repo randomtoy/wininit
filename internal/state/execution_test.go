@@ -45,7 +45,7 @@ func TestExecutionJournalValidationAndMemoryIsolation(t *testing.T) {
 	if err != nil || loaded.Executions[key].Status != "started" {
 		t.Fatal("execution map was aliased during Load")
 	}
-	for _, modify := range []func(*Execution){func(e *Execution) { e.BootID = "invalid" }, func(e *Execution) { e.Status = "invented" }, func(e *Execution) { e.HasExitCode = true }, func(e *Execution) { e.FailureCode = "raw-fixture-private-error" }} {
+	for _, modify := range []func(*Execution){func(e *Execution) { e.BootID = "invalid" }, func(e *Execution) { e.Status = "invented" }, func(e *Execution) { e.HasExitCode = true }, func(e *Execution) { e.ExitCode = 7 }, func(e *Execution) { e.OutputBytes = 1 }, func(e *Execution) { e.FailureCode = "timeout" }, func(e *Execution) { e.FailureCode = "raw-fixture-private-error" }} {
 		invalid := record
 		modify(&invalid)
 		value.Executions[key] = invalid

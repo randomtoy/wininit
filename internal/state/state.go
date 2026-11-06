@@ -115,7 +115,7 @@ func (s State) Validate() error {
 		}
 		switch execution.Status {
 		case "started":
-			if execution.HasExitCode || !execution.FinishedAt.IsZero() {
+			if execution.HasExitCode || execution.ExitCode != 0 || execution.OutputBytes != 0 || execution.FailureCode != "" || !execution.FinishedAt.IsZero() {
 				return errors.New("started execution has a terminal result")
 			}
 		case "succeeded", "failed", "interrupted", "reboot_required":
@@ -124,6 +124,18 @@ func (s State) Validate() error {
 			}
 		default:
 			return errors.New("invalid execution status")
+		}
+		if !execution.HasExitCode && execution.ExitCode != 0 {
+			return errors.New("execution has an exit code without exit evidence")
+		}
+		if execution.OutputBytes > (1<<20)+1 {
+			return errors.New("invalid execution output accounting")
+		}
+		if (execution.Status == "succeeded" || execution.Status == "reboot_required") && execution.FailureCode != "" {
+			return errors.New("successful execution has a failure code")
+		}
+		if (execution.Status == "failed" || execution.Status == "interrupted") && execution.FailureCode == "" {
+			return errors.New("failed execution has no failure code")
 		}
 		if execution.Status == "succeeded" && (!execution.HasExitCode || execution.ExitCode != 0) {
 			return errors.New("successful execution has an invalid exit code")

@@ -150,3 +150,7 @@ See [ADR 0013](adr/0013-powershell-user-data.md), [security](security.md), and
 [external process mechanics](external-plugins.md). The experimental userdata v1
 protocol is narrow: Describe, read-only Prepare and lease-bound Execute; it
 exposes neither script/output bytes nor Registry/platform handles.
+
+Before Execute, started intent is committed and flushed into both alternating
+checkpoint slots. Recovery from one damaged slot therefore retains replay
+protection; terminal evidence may conservatively recover as started/unknown.

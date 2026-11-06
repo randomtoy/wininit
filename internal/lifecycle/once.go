@@ -70,9 +70,14 @@ func (e *Engine) executeOnce(ctx context.Context, current *state.State, provisio
 	}
 	record := state.Execution{ApprovalHash: approval, BootID: boot, Status: "started", StartedAt: e.now().UTC()}
 	current.Executions[key] = record
-	if err := e.save(ctx, current); err != nil {
-		delete(current.Executions, key) // Execute was never called.
-		return plugin.Result{}, err
+	// Populate both alternating recovery slots before irreversible dispatch.
+	// Otherwise corruption of the sole intent slot could recover a pre-intent
+	// checkpoint and silently permit replay after a partial script mutation.
+	for i := 0; i < 2; i++ {
+		if err := e.save(ctx, current); err != nil {
+			delete(current.Executions, key) // Execute was never called.
+			return plugin.Result{}, err
+		}
 	}
 	result, executionErr := prepared.Execute(ctx)
 	record.FinishedAt = e.now().UTC()

@@ -472,3 +472,7 @@ The constant PowerShell bootstrap dot-sources the approved ScriptBlock in its
 own process scope so the native LASTEXITCODE is preserved; test both native
 nonzero exits and terminating errors. Native tests allow a cold interpreter
 startup without changing configured production session deadlines.
+
+Before Execute, started intent is committed and flushed into both alternating
+checkpoint slots. Recovery from one damaged slot therefore retains replay
+protection; terminal evidence may conservatively recover as started/unknown.

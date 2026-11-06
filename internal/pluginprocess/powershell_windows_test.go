@@ -33,7 +33,7 @@ func TestWindowsActualPowerShellExecution(t *testing.T) {
 		exit       uint32
 		failure    string
 	}{
-		{"success", `if([Environment]::CommandLine.Contains('fixture-private')){exit 19}; [Console]::Write('fixture-private'); exit 0`, 0, ""},
+		{"success", `if('ж' -cne [string][char]0x0436){exit 18}; if([Environment]::CommandLine.Contains('fixture-private')){exit 19}; [Console]::Write('fixture-private'); exit 0`, 0, ""},
 		{"terminating-error", `throw 'fixture-private'`, 1, "exit code"},
 		{"native-error", `& "$env:SystemRoot\System32\cmd.exe" /c exit 23`, 23, "exit code"},
 		{"reboot-request", `exit 3010`, 3010, ""},
