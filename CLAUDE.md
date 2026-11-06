@@ -473,7 +473,10 @@ The constant PowerShell bootstrap dot-sources the approved ScriptBlock in its
 own process scope and initializes only global:LASTEXITCODE so a local variable
 does not shadow the native exit code; test both native
 nonzero exits and terminating errors. Native tests allow a cold interpreter
-startup without changing configured production session deadlines.
+startup without changing configured production session deadlines. The actual
+interpreter result table allows 120 seconds on hosted runners; its first launch
+can exceed a minute. Permission-test cleanup restores only the DACL when the
+trusted owner has not changed, without requesting another ownership mutation.
 
 Before Execute, started intent is committed and flushed into both alternating
 checkpoint slots. Recovery from one damaged slot therefore retains replay
@@ -505,8 +508,10 @@ Allow the system SOFTWARE key's inheritable CREATOR OWNER placeholder while
 independently validating every actual child owner and mutation ACE; new state
 keys use explicit protected ACLs. Existing ancestors need only read access when
 updating a protected child, not an unnecessary CREATE_SUB_KEY handle right.
-The acceptance record also distinguishes a later state-only review regression
-run on that guest from the earlier LocalSystem service/reboot acceptance.
+The acceptance record also distinguishes later state and native process review
+regressions on that guest from the earlier LocalSystem service/reboot acceptance.
+The review's temporary TestMain overlay located cross-built fixtures only; test
+bodies and production code were unchanged and no guest Go installation needed.
 
 Lifecycle cancellation must match the root context error. A private PowerShell
 session deadline has a distinct context cause and must retain failed/timeout

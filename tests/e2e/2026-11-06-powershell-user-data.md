@@ -117,5 +117,12 @@ state remained writable below a read-only ancestor, the system CREATOR OWNER
 inheritance template was accepted without accepting real untrusted writers,
 and boot-marker/corrupt/future-checkpoint tests passed. The suite used isolated
 test Registry subtrees; its files and Registry resources were removed afterward.
-Concurrent cancellation and the actual PowerShell process tests are covered by
-the Linux/native Windows CI regressions, not by this narrower guest follow-up.
+The same production code then passed the actual interpreter result table
+(success/Unicode/scrubbed environment, terminating error, native cmd/EXE exit 23,
+3010 and output overflow), the NoCloud/ConfigDrive Registry journal pipeline
+(success reuse, failed-ID blocking and pending 3010 across process restarts),
+and native descendant cancellation on this guest. The three tests completed in
+about 31 seconds. A temporary build overlay changed only TestMain to locate
+cross-built fixture/plugin images, since the guest had no Go toolchain; test
+bodies and production code were unchanged. No service or reboot was required.
+The portable concurrent-error tests remain separate CI coverage.

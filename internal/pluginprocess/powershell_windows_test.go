@@ -46,7 +46,9 @@ func TestWindowsActualPowerShellExecution(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			settings := psSettings(t, "powershell")
-			settings.Process.TimeoutSeconds = 60
+			// Allow slow first interpreter runs on hosted Windows runners. This
+			// test checks results, not the production timeout policy.
+			settings.Process.TimeoutSeconds = 120
 			seed := t.TempDir()
 			if err := os.WriteFile(filepath.Join(seed, "meta-data"), []byte("instance-id: native-instance\n"), 0600); err != nil {
 				t.Fatal(err)

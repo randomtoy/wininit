@@ -27,7 +27,11 @@ func registryTestACL(t *testing.T, key registry.Key, descriptor string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := windows.SetSecurityInfo(windows.Handle(key), windows.SE_REGISTRY_KEY, windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, owner, nil, acl, nil); err != nil {
+	information := windows.SECURITY_INFORMATION(windows.DACL_SECURITY_INFORMATION | windows.PROTECTED_DACL_SECURITY_INFORMATION)
+	if owner != nil {
+		information |= windows.OWNER_SECURITY_INFORMATION
+	}
+	if err := windows.SetSecurityInfo(windows.Handle(key), windows.SE_REGISTRY_KEY, information, owner, nil, acl, nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -165,8 +169,10 @@ func TestRegistryCanUpdateTrustedStateBelowReadOnlyAncestor(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer key.Close()
-	defer registryTestACL(t, key, "O:BAG:BAD:P(A;;KA;;;SY)(A;;KA;;;BA)")
-	registryTestACL(t, key, "O:BAG:BAD:P(A;;KR;;;SY)(A;;KR;;;BA)")
+	// Keep the existing trusted owner. Changing ownership again while restoring
+	// a read-only ancestor can require privileges unrelated to this regression.
+	defer registryTestACL(t, key, "D:P(A;;KA;;;SY)(A;;KA;;;BA)")
+	registryTestACL(t, key, "D:P(A;;KR;;;SY)(A;;KR;;;BA)")
 	// Updating the existing child needs its rights, not CREATE_SUB_KEY on an
 	// already existing ancestor. Ownership and every mutation ACE stay trusted.
 	if err := store.Save(context.Background(), value); err != nil {
