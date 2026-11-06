@@ -116,7 +116,10 @@ func TrustedACL(file *os.File, secret bool) error {
 	if err != nil || dacl == nil {
 		return errors.New("protected file requires an explicit access-control list")
 	}
-	dangerous := uint32(windows.GENERIC_WRITE | windows.GENERIC_ALL | windows.FILE_WRITE_DATA | windows.FILE_APPEND_DATA | windows.FILE_WRITE_EA | windows.FILE_WRITE_ATTRIBUTES | windows.DELETE | windows.WRITE_DAC | windows.WRITE_OWNER)
+	// FILE_DELETE_CHILD on a directory can delete a protected child even when
+	// that child's own DACL does not grant DELETE.
+	const fileDeleteChild = 0x0040
+	dangerous := uint32(windows.GENERIC_WRITE | windows.GENERIC_ALL | windows.FILE_WRITE_DATA | windows.FILE_APPEND_DATA | windows.FILE_WRITE_EA | windows.FILE_WRITE_ATTRIBUTES | fileDeleteChild | windows.DELETE | windows.WRITE_DAC | windows.WRITE_OWNER)
 	if secret {
 		dangerous |= windows.GENERIC_READ | windows.GENERIC_EXECUTE | windows.FILE_GENERIC_READ | windows.FILE_GENERIC_EXECUTE
 	}

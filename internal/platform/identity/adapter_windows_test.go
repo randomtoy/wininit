@@ -8,6 +8,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -24,6 +25,7 @@ import (
 	"github.com/randomtoy/wininit/plugins/provisioner/passwordpolicy"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/registry"
 )
 
 func protectedTestPath(t *testing.T, path, extra string) {
@@ -154,6 +156,10 @@ func TestProtectedPasswordFiles(t *testing.T) {
 	if err := os.Remove(link); err != nil {
 		t.Fatal(err)
 	}
+	protectedTestPath(t, directory, "(A;;0x40;;;BU)")
+	if _, err := adapter.ReadPassword(ctx, path); err == nil {
+		t.Fatal("password parent granting FILE_DELETE_CHILD to users was accepted")
+	}
 	protectedTestPath(t, directory, "(A;OICI;GW;;;BU)")
 	if _, err := adapter.ReadPassword(ctx, path); err == nil {
 		t.Fatal("writable password parent accepted")
@@ -228,6 +234,14 @@ func TestNativeUsersKeysRerunRevocationAndUnsafePaths(t *testing.T) {
 		t.Fatal("initial password did not survive account reconciliation")
 	}
 	token.Close()
+	revoke := authorizedkeys.New([]identity.KeyUser{{Name: name}}, adapter)
+	result, err = revoke.Apply(ctx, plugin.Metadata{})
+	if err != nil || result.Changed {
+		t.Fatalf("absent profile revocation: %#v %v", result, err)
+	}
+	if _, err := existingProfile(sid); !errors.Is(err, registry.ErrNotExist) {
+		t.Fatal("revocation created an unnecessary profile")
+	}
 	public, _, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
@@ -260,6 +274,52 @@ func TestNativeUsersKeysRerunRevocationAndUnsafePaths(t *testing.T) {
 	result, err = keys.Apply(ctx, plugin.Metadata{})
 	if err != nil || result.Changed {
 		t.Fatalf("SSH key rerun: %#v %v", result, err)
+	}
+	// Revocation still protects an existing empty file: absence and zero bytes
+	// have different security semantics when another principal can write keys.
+	if _, err := revoke.Apply(ctx, plugin.Metadata{}); err != nil {
+		t.Fatal(err)
+	}
+	protectedTestPath(t, path, "(A;;GW;;;BU)")
+	result, err = revoke.Apply(ctx, plugin.Metadata{})
+	if err != nil || !result.Changed {
+		t.Fatalf("empty key file ACL repair: %#v %v", result, err)
+	}
+	file, err = securefile.OpenLocal(path, windows.GENERIC_READ|windows.READ_CONTROL, windows.FILE_NON_DIRECTORY_FILE)
+	if err != nil {
+		t.Fatal(err)
+	}
+	matches, err = keyACLMatches(windows.Handle(file.Fd()), sid)
+	file.Close()
+	if err != nil || !matches {
+		t.Fatalf("empty key file remained writable by other users: %v", err)
+	}
+	result, err = revoke.Apply(ctx, plugin.Metadata{})
+	if err != nil || result.Changed {
+		t.Fatalf("empty key file rerun: %#v %v", result, err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	result, err = revoke.Apply(ctx, plugin.Metadata{})
+	if err != nil || result.Changed {
+		t.Fatalf("absent key file revocation: %#v %v", result, err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("revocation created an unnecessary empty key file")
+	}
+	if err := os.Remove(filepath.Dir(path)); err != nil {
+		t.Fatal(err)
+	}
+	result, err = revoke.Apply(ctx, plugin.Metadata{})
+	if err != nil || result.Changed {
+		t.Fatalf("absent SSH directory revocation: %#v %v", result, err)
+	}
+	if _, err := os.Stat(filepath.Dir(path)); !os.IsNotExist(err) {
+		t.Fatal("revocation created an unnecessary SSH directory")
+	}
+	if _, err := keys.Apply(ctx, plugin.Metadata{}); err != nil {
+		t.Fatal(err)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {

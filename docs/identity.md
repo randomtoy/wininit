@@ -87,6 +87,8 @@ points, network drives, and alternate data streams are rejected.
 The file and its containing directory must be owned by SYSTEM or Builtin
 Administrators. Only those principals may read the password file; other
 principals must not have write/delete/ACL/ownership access to either object.
+This includes FILE_DELETE_CHILD on the containing directory, even if the file
+itself has a protected DACL.
 Keep secrets outside `log.directory`. For an existing dedicated directory/file,
 apply protected ACLs from an elevated session:
 
@@ -137,6 +139,8 @@ user, SYSTEM, and Builtin Administrators. Paths are opened relative to pinned
 directory handles without reparse traversal. Hard-linked key files are
 refused. A replacement receives its final ACL before an atomic rename;
 existing file contents or ACLs are never modified through a hard link.
+An existing empty file also receives ACL repair, including during revocation;
+revocation does not create absent profiles, .ssh directories, or key files.
 Directory ACL repair also updates only the opened directory object; it does
 not propagate permissions through existing child files or their hard links.
 

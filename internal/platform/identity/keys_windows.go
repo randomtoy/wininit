@@ -24,7 +24,7 @@ var setSecurityObject = windows.NewLazySystemDLL("ntdll.dll").NewProc("NtSetSecu
 const fileAddSubdirectory = 0x0004
 const fileDeleteChild = 0x0040
 
-func profilePath(ctx context.Context, user, sid string) (string, error) {
+func profilePath(ctx context.Context, user, sid string, create bool) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -34,6 +34,9 @@ func profilePath(ctx context.Context, user, sid string) (string, error) {
 	}
 	if !errors.Is(err, registry.ErrNotExist) {
 		return "", errors.New("read local user profile failed")
+	}
+	if !create {
+		return "", nil
 	}
 	encodedSID, _ := windows.UTF16PtrFromString(sid)
 	encodedUser, _ := windows.UTF16PtrFromString(user)
@@ -86,9 +89,12 @@ func (*Adapter) ReconcileKeys(ctx context.Context, user string, keys []string) (
 		return false, errors.New("SSH keys require an existing standard local account")
 	}
 	sid := info.SID.String()
-	path, err := profilePath(ctx, user, sid)
+	path, err := profilePath(ctx, user, sid, len(keys) != 0)
 	if err != nil {
 		return false, err
+	}
+	if path == "" {
+		return false, nil // Revoking an absent profile has no work to perform.
 	}
 	profile, err := securefile.OpenLocal(path, windows.FILE_LIST_DIRECTORY|fileAddSubdirectory|windows.READ_CONTROL, windows.FILE_DIRECTORY_FILE)
 	if err != nil {
@@ -99,7 +105,14 @@ func (*Adapter) ReconcileKeys(ctx context.Context, user string, keys []string) (
 	if err != nil {
 		return false, err
 	}
-	sshDir, err := securefile.OpenRelative(windows.Handle(profile.Fd()), ".ssh", windows.FILE_GENERIC_READ|windows.FILE_GENERIC_WRITE|fileDeleteChild|windows.READ_CONTROL|windows.WRITE_DAC, windows.FILE_OPEN_IF, windows.FILE_DIRECTORY_FILE, sd)
+	disposition := uint32(windows.FILE_OPEN_IF)
+	if len(keys) == 0 {
+		disposition = windows.FILE_OPEN
+	}
+	sshDir, err := securefile.OpenRelative(windows.Handle(profile.Fd()), ".ssh", windows.FILE_GENERIC_READ|windows.FILE_GENERIC_WRITE|fileDeleteChild|windows.READ_CONTROL|windows.WRITE_DAC, disposition, windows.FILE_DIRECTORY_FILE, sd)
+	if len(keys) == 0 && errors.Is(err, windows.STATUS_OBJECT_NAME_NOT_FOUND) {
+		return false, nil
+	}
 	if err != nil {
 		return false, fmt.Errorf("open or create .ssh without reparse points: %w", err)
 	}
@@ -111,19 +124,19 @@ func (*Adapter) ReconcileKeys(ctx context.Context, user string, keys []string) (
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
-	existing, aclMatches, err := readKeys(windows.Handle(sshDir.Fd()), sid)
+	existing, err := readKeys(windows.Handle(sshDir.Fd()), sid)
 	if err != nil {
 		return false, err
 	}
-	merged, err := identity.MergeKeys(existing, keys)
+	merged, err := identity.MergeKeys(existing.contents, keys)
 	if err != nil {
 		return false, err
 	}
-	if bytes.Equal(existing, merged) && aclMatches {
+	if bytes.Equal(existing.contents, merged) && existing.aclMatches {
 		return folderChanged, nil
 	}
 	// Avoid creating an empty file solely to revoke a block which never existed.
-	if len(existing) == 0 && len(merged) == 0 && !aclMatches {
+	if !existing.exists && len(merged) == 0 {
 		return folderChanged, nil
 	}
 	if err := ctx.Err(); err != nil {
@@ -205,25 +218,30 @@ func ensureKeyDirectoryACL(handle windows.Handle, sid string, desired *windows.S
 	return true, nil
 }
 
-func readKeys(parent windows.Handle, sid string) ([]byte, bool, error) {
+type keyFile struct {
+	contents           []byte
+	exists, aclMatches bool
+}
+
+func readKeys(parent windows.Handle, sid string) (keyFile, error) {
 	file, err := securefile.OpenRelative(parent, "authorized_keys", windows.GENERIC_READ|windows.READ_CONTROL, windows.FILE_OPEN, windows.FILE_NON_DIRECTORY_FILE, nil)
 	if errors.Is(err, windows.STATUS_OBJECT_NAME_NOT_FOUND) {
-		return nil, false, nil
+		return keyFile{}, nil
 	}
 	if err != nil {
-		return nil, false, fmt.Errorf("open authorized_keys without reparse points: %w", err)
+		return keyFile{}, fmt.Errorf("open authorized_keys without reparse points: %w", err)
 	}
 	defer file.Close()
 	var info windows.ByHandleFileInformation
 	if err := windows.GetFileInformationByHandle(windows.Handle(file.Fd()), &info); err != nil || info.NumberOfLinks != 1 {
-		return nil, false, errors.New("authorized_keys must be a regular file with exactly one hard link")
+		return keyFile{}, errors.New("authorized_keys must be a regular file with exactly one hard link")
 	}
 	data, err := io.ReadAll(io.LimitReader(file, identity.MaxAuthorizedKeysBytes+1))
 	if err != nil {
-		return nil, false, errors.New("read authorized_keys failed")
+		return keyFile{}, errors.New("read authorized_keys failed")
 	}
 	matches, err := keyACLMatches(windows.Handle(file.Fd()), sid)
-	return data, matches, err
+	return keyFile{contents: data, exists: true, aclMatches: matches}, err
 }
 
 type renameInformation struct {

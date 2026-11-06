@@ -235,6 +235,8 @@ an actual run of that procedure.
 - Password files and parent directories require SYSTEM/Administrators ownership
   and protected access. Reject network drives, streams, hard links, and reparse
   traversal. Password files must stay outside log.directory.
+  Parent-directory ACL checks must reject FILE_DELETE_CHILD grants to ordinary
+  users as well as DELETE/write grants; a child's DACL cannot negate that right.
 - Native file helpers must request FILE_READ_ATTRIBUTES before validating a
   handle, including traversal-only directories and write-only replacements.
   Keep syscall causes without echoing untrusted paths or payloads.
@@ -252,6 +254,10 @@ an actual run of that procedure.
   pinned directory handles, no reparse traversal, no hard links, and atomic
   flushed replacements. Preserve unmanaged bytes; empty key lists revoke only
   the managed block. Do not install/configure sshd or use shared admin key files.
+  Distinguish an absent authorized_keys file from an existing zero-byte file;
+  revocation must repair unsafe ACLs on an empty file without creating a new
+  file, profile, or .ssh directory when none exists. Cover these cases with
+  native regression tests.
 - Repair the .ssh directory ACL with a handle-only NtSetSecurityObject call;
   SetSecurityInfo would propagate inheritable ACLs into untrusted hard-linked
   children. A native regression must prove outside target ACLs stay unchanged.
