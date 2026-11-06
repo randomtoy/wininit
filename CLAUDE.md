@@ -401,8 +401,9 @@ precondition outside wininit; do not imply the plugin manages groups or sshd.
 - MSI-created ProgramData root/log/plugin directories and configuration use
   protected SYSTEM/Administrators ACLs. Preserve configuration contents across
   upgrades. Test actual installed DACLs; do not infer protection from XML.
-- Build/distribute the optional ConfigDrive EXE separately; MSI installs only
-  the agent. SHA256SUMS and CI/release artifacts include all three binaries.
+- Build/distribute the optional ConfigDrive and PowerShell EXEs separately; MSI
+  installs only the agent. SHA256SUMS and CI/release artifacts include all four
+  binaries (three EXEs and the MSI).
 - Do not add the install directory to the machine-wide `PATH`.
 - Unsigned artifacts are acceptable only while the MVP documentation states
   this limitation. Never describe unsigned artifacts as trusted.
@@ -477,3 +478,9 @@ startup without changing configured production session deadlines.
 Before Execute, started intent is committed and flushed into both alternating
 checkpoint slots. Recovery from one damaged slot therefore retains replay
 protection; terminal evidence may conservatively recover as started/unknown.
+
+The PowerShell child environment supplies fixed PATHEXT (.COM/.EXE/.BAT/.CMD)
+and native System32 ComSpec as well as fixed PATH/SystemRoot. Windows PowerShell
+5.1 needs native executable classification to wait and preserve exit codes;
+never inherit these values from the launching user. Verify cmd.exe and a real
+standalone EXE returning a nonzero code under the actual privileged job.

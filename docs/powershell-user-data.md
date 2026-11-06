@@ -134,7 +134,8 @@ This is trusted privileged code, usually running as LocalSystem. The SHA-256
 pin is authorization of those exact bytes, not proof they are safe. It retains
 administrative provisioning access. Its job is limited to eight processes and
 512 MiB total/per-process, assigned while suspended, with kill-on-close cleanup,
-a private desktop and scrubbed environment. Direct local/remote shutdown
+a private desktop and scrubbed environment with fixed OS PATH, PATHEXT and
+ComSpec (native System32 cmd.exe). Direct local/remote shutdown
 privileges are removed. Scripts must not request reboots directly; use 3010.
 Approved administrative code can still use services/schedulers or other
 privileged mechanisms outside the job. This is not a hostile-script sandbox.

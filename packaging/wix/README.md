@@ -8,7 +8,9 @@ Build on Windows with the .NET 10 SDK, Go, and PowerShell:
 .\scripts\package.ps1 -Version 0.1.0
 ```
 
-The script creates `dist\wininit-windows-amd64.exe`, `dist\wininit-windows-amd64.msi`, and `dist\SHA256SUMS`. MSI versions must be `MAJOR.MINOR.PATCH`; Windows Installer limits those fields to 255, 255, and 65535 respectively.
+The script creates `dist\wininit-windows-amd64.exe`, `dist\wininit-windows-amd64.msi`, the separate ConfigDrive/PowerShell plugin EXEs, and `dist\SHA256SUMS`. MSI
+installs only the agent; plugins require separate reviewed installation and
+explicit enablement. MSI versions must be `MAJOR.MINOR.PATCH`; Windows Installer limits those fields to 255, 255, and 65535 respectively.
 
 Install and uninstall silently while retaining a verbose administration log:
 

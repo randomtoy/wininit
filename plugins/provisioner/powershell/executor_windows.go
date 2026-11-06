@@ -67,7 +67,11 @@ func (NativeExecutor) Run(parent context.Context, script []byte, limit uint32) (
 	path := filepath.Join(system, "WindowsPowerShell", "v1.0", "powershell.exe")
 	cmd := exec.CommandContext(ctx, path, bootstrapArguments()...)
 	cmd.Dir = system
-	cmd.Env = []string{"SystemRoot=" + win, "WINDIR=" + win, "SystemDrive=" + filepath.VolumeName(win), "PATH=" + system + ";" + win + ";" + filepath.Dir(path), "PSModulePath=" + filepath.Join(filepath.Dir(path), "Modules")}
+	// Windows PowerShell 5.1 uses PATHEXT to recognize native executables.
+	// Without it, explicit .exe invocations can use asynchronous file association
+	// launch and leave LASTEXITCODE at zero. Supply fixed OS defaults, never
+	// inherited search paths or command processors from the host environment.
+	cmd.Env = []string{"SystemRoot=" + win, "WINDIR=" + win, "SystemDrive=" + filepath.VolumeName(win), "PATH=" + system + ";" + win + ";" + filepath.Dir(path), "PATHEXT=.COM;.EXE;.BAT;.CMD", "ComSpec=" + filepath.Join(system, "cmd.exe"), "PSModulePath=" + filepath.Join(filepath.Dir(path), "Modules")}
 	for _, folder := range []struct {
 		name string
 		id   *windows.KNOWNFOLDERID

@@ -16,8 +16,8 @@ The datasource, hostname, and identity packages are independently testable behin
 small internal interfaces. Tests must cover default-disabled and explicitly
 disabled behavior, including a state checkpoint from an older enabled run.
 Configuration tests must prove that older version 1 files keep newly introduced
-plugins disabled. State tests must cover deterministic schema version 1 to version 2
-migration.
+plugins disabled. State tests must cover deterministic schema 1/2 to schema 3
+migration without inventing script execution evidence.
 
 Lifecycle tests must also verify one reconciliation per process start, no
 automatic retry loop, configuration-hash gating of saved status, fresh metadata
@@ -56,9 +56,10 @@ disabled execution. Windows tests enumerate labels without mounting media or
 changing a hostname. MSI smoke verifies all seven logical plugins remain
 disabled and installed ProgramData/configuration DACLs are protected.
 
-`make build` produces `dist/wininit-windows-amd64.exe` and the separate
-`dist/wininit-plugin-configdrive-windows-amd64.exe`. `make package` is the
-release-style Windows target and produces both executables, MSI, and
+`make build` produces `dist/wininit-windows-amd64.exe`, the separate
+`dist/wininit-plugin-configdrive-windows-amd64.exe`, and
+`dist/wininit-plugin-powershell-windows-amd64.exe`. `make package` is the
+release-style Windows target and produces all three executables, MSI, and
 `SHA256SUMS`. Consult the build script output if the local WiX dependency is
 missing or has the wrong version.
 
