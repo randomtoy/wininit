@@ -61,6 +61,16 @@ Users read/execute access to the executable and read access to the selected
 seed. Protected password files must remain unreadable to Users. Use SID-based
 ACLs, including `/setowner '*S-1-5-32-544'` for manually copied images; inherited
 administrator membership alone does not satisfy the explicit owner check.
+For a new dedicated plugin directory and reviewed image:
+
+```powershell
+icacls.exe 'C:\Program Files\WinInit\plugins' /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)(F)' '*S-1-5-32-544:(OI)(CI)(F)' '*S-1-5-32-545:(OI)(CI)(RX)' /setowner '*S-1-5-32-544'
+icacls.exe 'C:\Program Files\WinInit\plugins\wininit-plugin-configdrive.exe' /inheritance:r /grant:r '*S-1-5-18:(F)' '*S-1-5-32-544:(F)' '*S-1-5-32-545:(RX)' /setowner '*S-1-5-32-544'
+```
+
+Remove any pre-existing explicit write grants to other principals. DOS-device,
+stream, relative, and trailing dot/space aliases are rejected to keep native
+image verification and Win32 process creation on the same file.
 
 The parent opens the image without reparse traversal, rejects hard links,
 validates ACLs and SHA-256, and holds the verified image against write/delete
@@ -96,9 +106,12 @@ local mTLS provide the deliberate identity/channel checks.
 
 ## Windows restrictions and trust
 
-The child uses a restricted primary token: the caller's user SID and Builtin
-Administrators are deny-only, privileges are disabled except traversal, and
-integrity is low. It does not inherit the host environment or input; only
+The child uses a restricted primary token: Administrators is deny-only, and
+Users, Authenticated Users, and Everyone form a restricting SID list which
+requires a second ACL access check. Caller identity is retained for Windows
+initialization, but SYSTEM/Admin-only files fail that second check. Privileges
+are disabled except traversal and integrity is low. It does not inherit the
+host environment or input; only
 Windows system-directory settings and protocol bootstrap values are supplied.
 
 It is created suspended, assigned to a Job Object, then resumed. The job kills
@@ -107,6 +120,13 @@ members on close, limits active processes to one, limits process memory to
 prohibits nesting such jobs inside a host's existing job. Thus a plugin cannot
 create an uncontained child before job assignment. The runtime enforces local
 loopback control endpoints, RPC size/deadline limits, and cleanup.
+
+Native `CreateProcessAsUser` explicitly selects a fresh noninteractive,
+low-integrity window station and desktop. They are separate from host UI and
+are closed with the process. The headless parent serializes and restores a
+temporary window-station switch while creating those objects. Only a null
+stdin and stdout/stderr pipe handles are inherited through an explicit handle
+allowlist; token, job, image, and other host handles are not inherited.
 
 These restrictions are defense in depth for explicitly trusted executable
 code, not an AppContainer or an untrusted-code sandbox. Readable filesystem
@@ -120,7 +140,8 @@ implied by gRPC or a checksum.
 
 Portable process tests use caller credentials and a separate process group for
 development only. They do not claim Windows isolation. Native Windows tests
-verify deny-only SIDs, low integrity, privilege removal, blocked host-secret
+verify restricting SIDs, deny-only Administrators, low integrity, a separate
+window station, privilege removal, blocked host-secret
 reads/writes, and denied process creation in the job. Other tests execute a
 real plugin for valid metadata, version/identity mismatch, malformed output,
 crash, environment isolation, deadlines, cancellation, and error redaction.

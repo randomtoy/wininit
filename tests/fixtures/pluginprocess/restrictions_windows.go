@@ -8,10 +8,24 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"unsafe"
 )
 
 func checkRestrictions(directory string) error {
+	station, _, callErr := windows.NewLazySystemDLL("user32.dll").NewProc("GetProcessWindowStation").Call()
+	if station == 0 {
+		return callErr
+	}
+	nameBuffer := make([]uint16, 256)
+	var required uint32
+	ok, _, callErr := windows.NewLazySystemDLL("user32.dll").NewProc("GetUserObjectInformationW").Call(station, 2, uintptr(unsafe.Pointer(&nameBuffer[0])), uintptr(len(nameBuffer)*2), uintptr(unsafe.Pointer(&required)))
+	if ok == 0 {
+		return callErr
+	}
+	if !strings.HasPrefix(windows.UTF16ToString(nameBuffer), "Wininit-") {
+		return errors.New("child inherited a host window station")
+	}
 	var limits windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION
 	if err := windows.QueryInformationJobObject(0, windows.JobObjectExtendedLimitInformation, uintptr(unsafe.Pointer(&limits)), uint32(unsafe.Sizeof(limits)), nil); err != nil {
 		return err
@@ -20,9 +34,18 @@ func checkRestrictions(directory string) error {
 		return errors.New("job limits are not installed")
 	}
 	token := windows.GetCurrentProcessToken()
-	user, err := token.GetTokenUser()
-	if err != nil || user.User.Attributes&windows.SE_GROUP_USE_FOR_DENY_ONLY == 0 {
-		return errors.New("user SID is not deny-only")
+	restrictedBuffer := make([]byte, 4096)
+	var restrictedSize uint32
+	if err := windows.GetTokenInformation(token, windows.TokenRestrictedSids, &restrictedBuffer[0], uint32(len(restrictedBuffer)), &restrictedSize); err != nil {
+		return err
+	}
+	restricted := (*windows.Tokengroups)(unsafe.Pointer(&restrictedBuffer[0]))
+	seen := map[string]bool{}
+	for _, group := range restricted.AllGroups() {
+		seen[group.Sid.String()] = true
+	}
+	if len(seen) != 3 || !seen["S-1-1-0"] || !seen["S-1-5-11"] || !seen["S-1-5-32-545"] {
+		return errors.New("ordinary restricting SIDs are not installed")
 	}
 	groups, err := token.GetTokenGroups()
 	if err != nil {

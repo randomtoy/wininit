@@ -39,7 +39,7 @@ func TestWindowsRestrictedProcessBootstrap(t *testing.T) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, settings.Executable)
 	cmd.Env = environment()
-	process, err := newProcessRunner(cmd, "")
+	process, err := newProcessRunner(ctx, cmd, "")
 	if err != nil {
 		t.Fatal(processError("bootstrap preparation", err))
 	}

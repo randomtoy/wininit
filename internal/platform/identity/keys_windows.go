@@ -19,6 +19,7 @@ import (
 )
 
 var createProfile = windows.NewLazySystemDLL("userenv.dll").NewProc("CreateProfile")
+var setSecurityObject = windows.NewLazySystemDLL("ntdll.dll").NewProc("NtSetSecurityObject")
 
 const fileAddSubdirectory = 0x0004
 const fileDeleteChild = 0x0040
@@ -179,10 +180,6 @@ func keyACLMatches(handle windows.Handle, sid string) (bool, error) {
 }
 
 func ensureKeyDirectoryACL(handle windows.Handle, sid string, desired *windows.SECURITY_DESCRIPTOR) (bool, error) {
-	dacl, _, err := desired.DACL()
-	if err != nil {
-		return false, err
-	}
 	matches, err := keyACLMatches(handle, sid)
 	if err != nil {
 		return false, err
@@ -198,8 +195,12 @@ func ensureKeyDirectoryACL(handle windows.Handle, sid string, desired *windows.S
 	if err != nil || owner == nil || owner.String() != sid && !owner.IsWellKnown(windows.WinLocalSystemSid) && !owner.IsWellKnown(windows.WinBuiltinAdministratorsSid) {
 		return false, errors.New(".ssh directory has an unsupported owner")
 	}
-	if err := windows.SetSecurityInfo(handle, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, dacl, nil); err != nil {
-		return false, errors.New("protect .ssh directory permissions failed")
+	// SetSecurityInfo propagates inheritable ACEs through existing children.
+	// A user's .ssh may contain hard links to unrelated files, so update only
+	// this opened directory object and never traverse its children for ACLs.
+	status, _, _ := setSecurityObject.Call(uintptr(handle), uintptr(windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION), uintptr(unsafe.Pointer(desired)))
+	if status != 0 {
+		return false, fmt.Errorf("protect .ssh directory permissions: %w", windows.NTStatus(status))
 	}
 	return true, nil
 }

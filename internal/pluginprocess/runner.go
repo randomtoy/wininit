@@ -25,12 +25,14 @@ type processRunner struct {
 	cancelled      atomic.Bool
 	once           sync.Once
 	startFailure   error
+	startCancelled bool
 	exitStatus     atomic.Uint64
 	finished       chan struct{}
+	pid            int
 }
 
-func newProcessRunner(cmd *exec.Cmd, directory string) (*processRunner, error) {
-	control, err := prepareProcess(cmd)
+func newProcessRunner(ctx context.Context, cmd *exec.Cmd, directory string) (*processRunner, error) {
+	control, err := prepareProcess(ctx, cmd)
 	if err != nil {
 		return nil, err
 	}
@@ -65,15 +67,18 @@ func (r *processRunner) Start(ctx context.Context) error {
 		r.close()
 		return err
 	}
-	if err := r.cmd.Start(); err != nil {
+	if err := r.control.start(r.cmd); err != nil {
+		r.startCancelled = errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 		r.startFailure = processError("process creation", err)
 		r.close()
 		return err
 	}
+	r.pid = r.cmd.Process.Pid
 	if err := r.control.started(r.cmd); err != nil {
+		r.startCancelled = errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 		r.startFailure = processError("process containment", err)
-		r.cmd.Process.Kill()
-		r.cmd.Wait()
+		r.control.kill(r.cmd)
+		r.control.wait(r.cmd)
 		r.close()
 		return err
 	}
@@ -88,14 +93,23 @@ func processError(operation string, cause error) error {
 	}
 	return fmt.Errorf("external ConfigDrive %s failed", operation)
 }
-func (r *processRunner) close() { r.once.Do(func() { r.control.close() }) }
+func (r *processRunner) close() {
+	r.once.Do(func() {
+		r.control.close()
+		r.stdout.Close()
+		r.stderr.Close()
+		if file, ok := r.cmd.Stdout.(*os.File); ok {
+			file.Close()
+		}
+		if file, ok := r.cmd.Stderr.(*os.File); ok {
+			file.Close()
+		}
+	})
+}
 func (r *processRunner) Wait(context.Context) error {
-	defer r.close()
-	defer close(r.finished)
-	err := r.cmd.Wait()
-	if r.cmd.ProcessState != nil {
-		r.exitStatus.Store(1<<32 | uint64(uint32(r.cmd.ProcessState.ExitCode())))
-	}
+	defer func() { r.close(); close(r.finished) }()
+	code, err := r.control.wait(r.cmd)
+	r.exitStatus.Store(1<<32 | uint64(code))
 	return err
 }
 func (r *processRunner) Kill(context.Context) error {
@@ -110,10 +124,10 @@ func (r *processRunner) Stderr() io.ReadCloser         { return r.stderr }
 func (*processRunner) Name() string                    { return "verified ConfigDrive process" }
 func (*processRunner) Diagnose(context.Context) string { return "external ConfigDrive process failed" }
 func (r *processRunner) ID() string {
-	if r.cmd.Process == nil {
+	if r.pid == 0 {
 		return ""
 	}
-	return strconv.Itoa(r.cmd.Process.Pid)
+	return strconv.Itoa(r.pid)
 }
 func (r *processRunner) PluginToHost(network, address string) (string, string, error) {
 	if network == "tcp" {

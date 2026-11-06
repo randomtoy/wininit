@@ -8,8 +8,10 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"unsafe"
@@ -40,6 +42,77 @@ func requireElevated(t *testing.T) {
 	t.Helper()
 	if !windows.GetCurrentProcessToken().IsElevated() {
 		t.Fatal("isolated identity integration tests require an elevated disposable Windows runner")
+	}
+}
+
+func aclEntries(t *testing.T, path string) []string {
+	t.Helper()
+	sd, err := windows.GetNamedSecurityInfo(path, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dacl, _, err := sd.DACL()
+	if err != nil || dacl == nil {
+		t.Fatal("fixture has no DACL")
+	}
+	control, _, err := sd.Control()
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries := []string{fmt.Sprint(control & windows.SE_DACL_PROTECTED)}
+	for index := uint16(0); index < dacl.AceCount; index++ {
+		var ace *windows.ACCESS_ALLOWED_ACE
+		if err := windows.GetAce(dacl, uint32(index), &ace); err != nil {
+			t.Fatal(err)
+		}
+		if ace.Header.AceType != windows.ACCESS_ALLOWED_ACE_TYPE {
+			t.Fatal("unexpected fixture ACE")
+		}
+		sid := (*windows.SID)(unsafe.Pointer(&ace.SidStart))
+		entries = append(entries, fmt.Sprintf("%d/%d/%x/%s", ace.Header.AceType, ace.Header.AceFlags, ace.Mask, sid.String()))
+	}
+	return entries
+}
+func TestDirectoryACLRepairDoesNotChangeHardLinkedChildren(t *testing.T) {
+	requireElevated(t)
+	root := t.TempDir()
+	protectedTestPath(t, root, "")
+	outside := filepath.Join(root, "outside")
+	if err := os.WriteFile(outside, []byte("outside-acl-fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	directory := filepath.Join(root, "ssh")
+	if err := os.Mkdir(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	protectedTestPath(t, directory, "(A;OICI;GR;;;BU)")
+	if err := os.Link(outside, filepath.Join(directory, "unrelated-child")); err != nil {
+		t.Fatal(err)
+	}
+	before := aclEntries(t, outside)
+	if before[0] != "0" {
+		t.Fatal("outside fixture must inherit its ACL")
+	}
+	userSID := "S-1-5-21-10001-10002-10003-1001"
+	desired, err := windows.SecurityDescriptorFromString("O:BAG:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;" + userSID + ")")
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := securefile.OpenLocal(directory, windows.READ_CONTROL|windows.WRITE_DAC|windows.FILE_LIST_DIRECTORY, windows.FILE_DIRECTORY_FILE)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	changed, err := ensureKeyDirectoryACL(windows.Handle(file.Fd()), userSID, desired)
+	if err != nil || !changed {
+		t.Fatalf("directory ACL repair: changed=%v error=%v", changed, err)
+	}
+	if !reflect.DeepEqual(before, aclEntries(t, outside)) {
+		t.Fatal("directory ACL repair changed an outside hard-link target")
+	}
+	matches, err := keyACLMatches(windows.Handle(file.Fd()), userSID)
+	if err != nil || !matches {
+		t.Fatalf("directory ACL was not repaired: %v", err)
 	}
 }
 func TestProtectedPasswordFiles(t *testing.T) {

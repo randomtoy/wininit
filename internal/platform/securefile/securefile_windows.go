@@ -29,10 +29,17 @@ func OpenRelative(parent windows.Handle, name string, access, disposition, optio
 	oa.Length = uint32(unsafe.Sizeof(oa))
 	var handle windows.Handle
 	var iosb windows.IO_STATUS_BLOCK
+	share := uint32(windows.FILE_SHARE_READ)
+	if options&windows.FILE_DIRECTORY_FILE != 0 {
+		share |= windows.FILE_SHARE_WRITE
+	}
+	if access&windows.DELETE != 0 {
+		share |= windows.FILE_SHARE_DELETE
+	}
 	// Every handle is inspected before use. FILE_READ_ATTRIBUTES is required
 	// even when the caller only requested directory traversal or file writes.
 	err = windows.NtCreateFile(&handle, access|windows.SYNCHRONIZE|windows.FILE_READ_ATTRIBUTES, &oa, &iosb, nil, windows.FILE_ATTRIBUTE_NORMAL,
-		windows.FILE_SHARE_READ, disposition, options|windows.FILE_SYNCHRONOUS_IO_NONALERT|windows.FILE_OPEN_REPARSE_POINT, 0, 0)
+		share, disposition, options|windows.FILE_SYNCHRONOUS_IO_NONALERT|windows.FILE_OPEN_REPARSE_POINT, 0, 0)
 	if err != nil {
 		return nil, err
 	}

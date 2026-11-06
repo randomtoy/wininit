@@ -81,6 +81,7 @@ func (p *ConfigDrive) Discover(parent context.Context) (plugin.Metadata, error) 
 	}
 	var process *processRunner
 	var startupFailure error
+	startupCancelled := false
 	client := goplugin.NewClient(&goplugin.ClientConfig{
 		HandshakeConfig:  datasourcev1.Handshake(),
 		Plugins:          goplugin.PluginSet{datasourcev1.PluginKey: &datasourcev1.GRPCPlugin{}},
@@ -101,8 +102,9 @@ func (p *ConfigDrive) Discover(parent context.Context) (plugin.Metadata, error) 
 			cmd := exec.CommandContext(ctx, p.settings.Executable)
 			cmd.Env = append(environment(), spec.Env...)
 			var err error
-			process, err = newProcessRunner(cmd, directory)
+			process, err = newProcessRunner(ctx, cmd, directory)
 			if err != nil {
+				startupCancelled = errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 				startupFailure = processError("credential/job preparation", err)
 			}
 			return process, err
@@ -111,7 +113,7 @@ func (p *ConfigDrive) Discover(parent context.Context) (plugin.Metadata, error) 
 	defer client.Kill()
 	connection, err := client.Client()
 	if err != nil {
-		if process != nil && process.cancelled.Load() && ctx.Err() != nil {
+		if ctx.Err() != nil && (startupCancelled || process != nil && (process.cancelled.Load() || process.startCancelled)) {
 			return plugin.Metadata{}, ctx.Err()
 		}
 		if startupFailure != nil {
@@ -135,6 +137,9 @@ func (p *ConfigDrive) Discover(parent context.Context) (plugin.Metadata, error) 
 	}
 	raw, err := connection.Dispense(datasourcev1.PluginKey)
 	if err != nil {
+		if cancelledRPC(ctx, process, err) {
+			return plugin.Metadata{}, ctx.Err()
+		}
 		return plugin.Metadata{}, errors.New("external ConfigDrive interface negotiation failed")
 	}
 	rpc, ok := raw.(datasourcev1.DatasourceClient)
@@ -143,7 +148,7 @@ func (p *ConfigDrive) Discover(parent context.Context) (plugin.Metadata, error) 
 	}
 	description, err := rpc.Describe(ctx, &datasourcev1.DescribeRequest{})
 	if err != nil {
-		if ctx.Err() != nil && (status.Code(err) == codes.Canceled || status.Code(err) == codes.DeadlineExceeded) {
+		if cancelledRPC(ctx, process, err) {
 			return plugin.Metadata{}, ctx.Err()
 		}
 		return plugin.Metadata{}, errors.New("external ConfigDrive identity negotiation failed")
@@ -153,7 +158,7 @@ func (p *ConfigDrive) Discover(parent context.Context) (plugin.Metadata, error) 
 	}
 	response, err := rpc.Discover(ctx, &datasourcev1.DiscoverRequest{SeedDirectory: p.directory, DiscoverVolumes: p.discover})
 	if err != nil {
-		if ctx.Err() != nil && (status.Code(err) == codes.Canceled || status.Code(err) == codes.DeadlineExceeded) {
+		if cancelledRPC(ctx, process, err) {
 			return plugin.Metadata{}, ctx.Err()
 		}
 		return plugin.Metadata{}, errors.New("external ConfigDrive discovery failed")
@@ -180,3 +185,16 @@ func (p *ConfigDrive) Discover(parent context.Context) (plugin.Metadata, error) 
 	return metadata, nil
 }
 func deadline(ctx context.Context) time.Time { value, _ := ctx.Deadline(); return value }
+
+func cancelledRPC(ctx context.Context, process *processRunner, cause error) bool {
+	if ctx.Err() == nil {
+		return false
+	}
+	switch status.Code(cause) {
+	case codes.Canceled, codes.DeadlineExceeded:
+		return true
+	case codes.Unavailable:
+		return process != nil && process.cancelled.Load()
+	}
+	return false
+}

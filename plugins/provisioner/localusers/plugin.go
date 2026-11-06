@@ -50,6 +50,7 @@ func (p *Plugin) Apply(ctx context.Context, _ plugin.Metadata) (plugin.Result, e
 		if !exists {
 			password, err := p.platform.ReadPassword(ctx, user.PasswordFile)
 			if err != nil {
+				clear(password)
 				return plugin.Result{}, err
 			}
 			err = p.platform.CreateUser(ctx, user, password)

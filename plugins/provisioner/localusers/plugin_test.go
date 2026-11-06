@@ -10,6 +10,7 @@ import (
 )
 
 type fakePlatform struct {
+	readErr, createErr      error
 	state                   UserState
 	exists                  bool
 	reads, creates, updates int
@@ -23,7 +24,7 @@ func (f *fakePlatform) User(context.Context, string) (UserState, bool, error) {
 func (f *fakePlatform) ReadPassword(context.Context, string) ([]byte, error) {
 	f.reads++
 	f.password = []byte("fixture-initial-secret")
-	return f.password, f.err
+	return f.password, f.readErr
 }
 func (f *fakePlatform) CreateUser(_ context.Context, user identity.User, password []byte) error {
 	f.creates++
@@ -32,7 +33,7 @@ func (f *fakePlatform) CreateUser(_ context.Context, user identity.User, passwor
 	}
 	f.exists = true
 	f.state = UserState{user.FullName, user.Description, user.PasswordNeverExpires}
-	return f.err
+	return f.createErr
 }
 func (f *fakePlatform) UpdateUser(_ context.Context, user identity.User) error {
 	f.updates++
@@ -76,5 +77,32 @@ func TestFailureAndCancellationDoNotReadSecrets(t *testing.T) {
 	cancel()
 	if _, err := p.Apply(ctx, plugin.Metadata{}); !errors.Is(err, context.Canceled) || platform.reads != 0 {
 		t.Fatal("cancelled plugin read a secret")
+	}
+}
+
+func TestPasswordBuffersAreClearedOnReadAndCreateFailure(t *testing.T) {
+	t.Parallel()
+	for _, stage := range []string{"read", "create"} {
+		t.Run(stage, func(t *testing.T) {
+			want := errors.New("isolated secret operation failed")
+			platform := &fakePlatform{}
+			if stage == "read" {
+				platform.readErr = want
+			} else {
+				platform.createErr = want
+			}
+			desired := identity.User{Name: "worker", PasswordFile: filepath.Join(t.TempDir(), "password")}
+			if _, err := New([]identity.User{desired}, platform).Apply(context.Background(), plugin.Metadata{}); !errors.Is(err, want) {
+				t.Fatalf("error=%v", err)
+			}
+			if len(platform.password) == 0 {
+				t.Fatal("fixture did not exercise secret allocation")
+			}
+			for _, value := range platform.password {
+				if value != 0 {
+					t.Fatal("failed operation retained password bytes")
+				}
+			}
+		})
 	}
 }

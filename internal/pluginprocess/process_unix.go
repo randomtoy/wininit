@@ -3,6 +3,7 @@
 package pluginprocess
 
 import (
+	"context"
 	"errors"
 	"os"
 	"os/exec"
@@ -13,9 +14,17 @@ import (
 // group. Production Windows credential restrictions are tested natively.
 type processControl struct{}
 
-func prepareProcess(cmd *exec.Cmd) (*processControl, error) {
+func prepareProcess(_ context.Context, cmd *exec.Cmd) (*processControl, error) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	return &processControl{}, nil
+}
+func (*processControl) start(cmd *exec.Cmd) error { return cmd.Start() }
+func (*processControl) wait(cmd *exec.Cmd) (uint32, error) {
+	err := cmd.Wait()
+	if cmd.ProcessState == nil {
+		return 0, err
+	}
+	return uint32(cmd.ProcessState.ExitCode()), err
 }
 func (*processControl) started(*exec.Cmd) error { return nil }
 func (*processControl) kill(cmd *exec.Cmd) error {

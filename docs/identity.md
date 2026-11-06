@@ -137,6 +137,8 @@ user, SYSTEM, and Builtin Administrators. Paths are opened relative to pinned
 directory handles without reparse traversal. Hard-linked key files are
 refused. A replacement receives its final ACL before an atomic rename;
 existing file contents or ACLs are never modified through a hard link.
+Directory ACL repair also updates only the opened directory object; it does
+not propagate permissions through existing child files or their hard links.
 
 Administrator accounts are refused because default Windows OpenSSH uses a
 shared `administrators_authorized_keys` file. This plugin does not install or

@@ -238,6 +238,10 @@ an actual run of that procedure.
 - Native file helpers must request FILE_READ_ATTRIBUTES before validating a
   handle, including traversal-only directories and write-only replacements.
   Keep syscall causes without echoing untrusted paths or payloads.
+- Pin directories by denying FILE_SHARE_DELETE while allowing FILE_SHARE_WRITE
+  for Windows rename internals. New replacement files allow delete sharing for
+  handle-relative rename, but deny foreign writes. Verified images/secrets
+  retain exclusive write/delete protection.
 - Protected files/executables must reject ADS, DOS-device names, dot/space
   aliases, and relative components, so NT verification and Win32 execution
   identify the same object. Handle-relative opens accept one component only.
@@ -248,13 +252,18 @@ an actual run of that procedure.
   pinned directory handles, no reparse traversal, no hard links, and atomic
   flushed replacements. Preserve unmanaged bytes; empty key lists revoke only
   the managed block. Do not install/configure sshd or use shared admin key files.
+- Repair the .ssh directory ACL with a handle-only NtSetSecurityObject call;
+  SetSecurityInfo would propagate inheritable ACLs into untrusted hard-linked
+  children. A native regression must prove outside target ACLs stay unchanged.
 - CreateProfile uses a MAX_PATH-sized output buffer; its RPC size constraint
   is narrower than ordinary Windows long-path filesystem support.
 - External ConfigDrive requires explicit mode/enablement, absolute reviewed
   image, SHA-256 pin, trusted image/parent ACLs, locked verified image,
   matching handshake/identity, local mTLS, bounded messages, deadlines across
   framework calls, cancellation, and cleanup.
-- Windows children use deny-only caller/Admin SIDs, disabled privileges, low
+- Windows children retain caller identity but use deny-only Administrators
+  plus ordinary Users/Authenticated Users/Everyone restricting SIDs for a second
+  ACL access check, disabled privileges, low
   integrity, and a suspended start before assignment to a kill-on-close job
   limited to one process and 256 MiB. Start without a window and scrub inherited
   environment/stdin. Omit job UI limits because Windows disallows nesting them
@@ -262,6 +271,13 @@ an actual run of that procedure.
   job assignment.
 - Restricted token handles need TOKEN_ADJUST_DEFAULT for low-integrity setup;
   validate the actual child token and current job, not just constructor flags.
+- Restricted children use a fresh noninteractive low-integrity window station
+  and desktop, never an inherited host desktop. Serialize the temporary parent
+  window-station switch on a pinned thread and restore it before child creation;
+  the host is headless. Native CreateProcessAsUser specifies this desktop,
+  sorted scrubbed environment, and an explicit three-handle stdio allowlist.
+  Keep the initial thread handle for job assignment before resume. Close UI,
+  token, job, process, thread, pipe, and cancellation resources on every path.
 - These are reviewed trusted-code plugins, not an AppContainer sandbox.
   Outbound networking and filesystem reads are not completely OS-isolated.
   Do not claim otherwise or enable arbitrary unreviewed code. Protocol endpoints
