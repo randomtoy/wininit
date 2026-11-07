@@ -31,6 +31,11 @@ plugins:
       enabled: false
       seed_directory: ''
       discover_volumes: true
+      execution: builtin
+      process:
+        executable: ''
+        sha256: ''
+        timeout_seconds: 15
     configdrive:
       enabled: false
       seed_directory: ''
@@ -43,6 +48,12 @@ plugins:
   provisioners:
     hostname:
       enabled: false
+      execution: builtin
+      allow_privileged: false
+      process:
+        executable: ''
+        sha256: ''
+        timeout_seconds: 30
     password_policy:
       enabled: false
       minimum_length: 14
@@ -58,6 +69,16 @@ plugins:
     authorized_keys:
       enabled: false
       users: []
+    powershell_user_data:
+      enabled: false
+      allow_privileged: false
+      execution_id: ''
+      script_sha256: ''
+      max_output_bytes: 65536
+      process:
+        executable: ''
+        sha256: ''
+        timeout_seconds: 120
 ```
 
 The `plugins.directory` field remains reserved and is never scanned. Setting

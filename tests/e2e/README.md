@@ -128,3 +128,20 @@ hosted runner or simulated boot transition is not a guest reboot acceptance run.
 The [2026-11-06 PowerShell run](2026-11-06-powershell-user-data.md) records
 LocalSystem local-seed acceptance with an explicitly authorized real reboot.
 It does not execute the hostname-rename procedure above.
+
+## Metadata SDK acceptance without reboot
+
+For the separate NoCloud/hostname EXEs, record their exact source/checksums and
+original active/configured name and boot time. Use an isolated state key and
+protected reviewed files. Enable external NoCloud with a local seed and external
+hostname with privileged approval, targeting the name already configured by
+Windows. Require a completed lifecycle, unchanged names and no reboot request.
+Restart only the service and require a higher attempt counter plus another
+completed reconciliation. Test wrong image pins and disabled plugins with
+missing EXEs. Verify failed `service start` returns an error promptly. Remove
+only owned service/configuration/state/files and recheck names/boot/SSH access.
+Do not turn this procedure into a real rename/reboot test without authorization.
+
+The [2026-11-07 metadata SDK run](2026-11-07-metadata-sdk.md) records native
+process, LocalSystem lifecycle and cleanup results on the existing Server 2025
+guest; its scope is separate from the full release matrix.

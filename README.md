@@ -33,7 +33,7 @@ implementation of Cloudbase-Init.
 | Standard local users, initial passwords, SAM policy, SSH keys | Implemented; opt-in |
 | PowerShell user-data | Experimental separate EXE; opt-in, hash-approved, one-shot |
 | Hostname restart checkpoint/reconciliation | Implemented; no automatic restart |
-| External ConfigDrive and versioned Go SDK | Experimental v1; opt-in |
+| External NoCloud/ConfigDrive/hostname and Go SDK | Experimental named datasource / metadata provisioner v1; opt-in |
 
 See [MVP scope](docs/mvp.md), [compatibility](docs/compatibility.md), and the
 [roadmap](docs/roadmap.md) for the exact boundary between implemented and

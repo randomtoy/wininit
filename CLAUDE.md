@@ -552,3 +552,15 @@ immediately, rather than waiting forever for Running. Preserve ordinary stop
 cleanup and context cancellation; the native wait-state regression covers a
 StartPending-to-Stopped transition. Operator icacls examples set ownership and
 grants in separate commands because combining /setowner with /grant is invalid.
+
+Cancellation conformance fixtures signal readiness from the actual handshake,
+Describe or Apply operation before the test cancels the root context. Do not
+label a startup timeout as RPC cancellation; private-timeout tests also prove
+they reached Apply. Fixture readiness files are isolated test resources.
+
+`tests/e2e/2026-11-07-metadata-sdk.md` records native SDK/role tests and the
+LocalSystem external NoCloud/hostname pipeline on Server 2025, with same-name
+reconciliation, real service restart, negative pins and disablement. Hostname
+and OS boot time remained unchanged; no reboot was authorized or performed.
+The test-owned service/configuration/Registry/files were cleaned. This was a
+development CLI deployment, not guest MSI or Server 2022 acceptance.

@@ -104,6 +104,11 @@ provisioner retains its one-shot userdata SDK and execution journal.
 Stable Go API promises, arbitrary host registrations, plugin registries,
 secret-bearing generic provisioning and hostile-code isolation remain future work.
 
+The [2026-11-07 SDK guest run](../tests/e2e/2026-11-07-metadata-sdk.md) verifies
+LocalSystem NoCloud/hostname EXEs, unchanged-name reconciliation, service
+restart, negative pins, disablement and native role/cancellation boundaries
+on Server 2025 without reboot. The broader matrix remains pending.
+
 ## 7. End-to-end matrix and release hardening
 
 Automate QEMU/KVM and OpenStack tests for Windows Server 2022/2025, then add

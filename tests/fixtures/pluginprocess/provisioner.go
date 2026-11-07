@@ -19,6 +19,9 @@ type provisionerFixture struct {
 
 func (f *provisionerFixture) Describe(ctx context.Context, _ *provisionerv1.DescribeRequest) (*provisionerv1.Identity, error) {
 	if f.mode == "prov-describe-hang" {
+		if err := os.WriteFile(os.Args[0]+".started", []byte("describe"), 0600); err != nil {
+			return nil, err
+		}
 		<-ctx.Done()
 		return nil, status.FromContextError(ctx.Err()).Err()
 	}
@@ -38,6 +41,9 @@ func (f *provisionerFixture) Describe(ctx context.Context, _ *provisionerv1.Desc
 func (f *provisionerFixture) Apply(ctx context.Context, _ *provisionerv1.ApplyRequest) (*provisionerv1.ApplyResponse, error) {
 	switch f.mode {
 	case "prov-hang":
+		if err := os.WriteFile(os.Args[0]+".started", []byte("apply"), 0600); err != nil {
+			return nil, err
+		}
 		<-ctx.Done()
 		return nil, status.FromContextError(ctx.Err()).Err()
 	case "prov-earlydeadline":
@@ -81,6 +87,9 @@ func (p *provisionerFixturePlugin) GRPCServer(_ *goplugin.GRPCBroker, server *gr
 }
 func serveProvisionerFixture(mode string) {
 	if mode == "prov-nohandshake" {
+		if err := os.WriteFile(os.Args[0]+".started", []byte("handshake"), 0600); err != nil {
+			os.Exit(1)
+		}
 		os.Stdout.WriteString("fixture-private-secret")
 		time.Sleep(time.Hour)
 		return

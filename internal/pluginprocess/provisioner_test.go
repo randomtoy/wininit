@@ -61,24 +61,58 @@ func TestExternalProvisionerCancellationAndTimeout(t *testing.T) {
 	}{{"apply", "prov-hang", true}, {"describe", "prov-describe-hang", true}, {"handshake", "prov-nohandshake", true}, {"private-timeout", "prov-hang", false}} {
 		t.Run(tc.name, func(t *testing.T) {
 			settings := hostnameSettings(t, tc.mode)
-			settings.Process.TimeoutSeconds = 3
-			ctx := context.Background()
+			settings.Process.TimeoutSeconds = 5
+			ctx, stop := context.WithCancel(context.Background())
+			defer stop()
+			done := make(chan error, 1)
+			go func() {
+				_, err := NewHostname(settings).Apply(ctx, plugin.Metadata{InstanceID: "fixture", Datasource: "nocloud"})
+				done <- err
+			}()
 			if tc.cancel {
-				var stop context.CancelFunc
-				ctx, stop = context.WithTimeout(ctx, 250*time.Millisecond)
-				defer stop()
-			}
-			start := time.Now()
-			_, err := NewHostname(settings).Apply(ctx, plugin.Metadata{InstanceID: "fixture", Datasource: "nocloud"})
-			if tc.cancel {
-				if !errors.Is(err, context.DeadlineExceeded) {
-					t.Fatalf("root cancellation=%v", err)
+				// Synchronize with the actual fixture operation, rather than
+				// timing out during startup while claiming RPC cancellation.
+				settingsDeadline := time.NewTimer(4 * time.Second)
+				defer settingsDeadline.Stop()
+				ticker := time.NewTicker(10 * time.Millisecond)
+				defer ticker.Stop()
+				ready := false
+				for !ready {
+					select {
+					case err := <-done:
+						t.Fatalf("operation failed before readiness: %v", err)
+					case <-settingsDeadline.C:
+						t.Fatal("fixture did not reach the named operation")
+					case <-ticker.C:
+						_, err := os.Stat(settings.Process.Executable + ".started")
+						ready = err == nil
+					}
 				}
-			} else if !errors.Is(err, errProvisionerTimeout) || errors.Is(err, context.DeadlineExceeded) {
-				t.Fatalf("private timeout hidden as root cancellation: %v", err)
-			}
-			if time.Since(start) > 7*time.Second {
-				t.Fatal("process cleanup missed cancellation")
+				start := time.Now()
+				stop()
+				select {
+				case err := <-done:
+					if !errors.Is(err, context.Canceled) {
+						t.Fatalf("root cancellation=%v", err)
+					}
+				case <-time.After(5 * time.Second):
+					t.Fatal("process survived cancellation")
+				}
+				if time.Since(start) > 5*time.Second {
+					t.Fatal("process cleanup missed cancellation")
+				}
+			} else {
+				select {
+				case err := <-done:
+					if !errors.Is(err, errProvisionerTimeout) || errors.Is(err, context.DeadlineExceeded) {
+						t.Fatalf("private timeout hidden as root cancellation: %v", err)
+					}
+				case <-time.After(8 * time.Second):
+					t.Fatal("private session deadline was not enforced")
+				}
+				if _, err := os.Stat(settings.Process.Executable + ".started"); err != nil {
+					t.Fatal("timeout test did not reach Apply")
+				}
 			}
 		})
 	}

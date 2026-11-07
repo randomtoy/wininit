@@ -194,3 +194,14 @@ PowerShell. MSI installs only the agent; release/checksum artifacts include all
 five EXEs and the MSI. Builtin NoCloud/hostname remain compatible defaults, all
 plugins remain disabled by default, and external hostname requires privileged
 approval. See [metadata SDK](external-sdk.md) for protocol, privilege, compatibility and test boundaries.
+
+For metadata protocol regeneration, the committed outputs use protoc 33.4,
+protoc-gen-go 1.36.12 and protoc-gen-go-grpc 1.6.0. With those tools on PATH:
+
+```sh
+protoc --go_out=. --go_opt=paths=source_relative \
+  --go-grpc_out=. --go-grpc_opt=paths=source_relative \
+  sdk/provisioner/v1/provisioner.proto
+```
+
+Run `go test ./tests/integration` to verify an independent SDK consumer module.
