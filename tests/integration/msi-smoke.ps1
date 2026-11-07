@@ -305,6 +305,11 @@ try {
     $contendedProcess = $null
 
     if ($PluginDistDirectory) {
+        $packagedAgent = Join-Path $PluginDistDirectory 'wininit-windows-amd64.exe'
+        if ((Get-FileHash -LiteralPath $executable -Algorithm SHA256).Hash -ne
+            (Get-FileHash -LiteralPath $packagedAgent -Algorithm SHA256).Hash) {
+            throw 'Installed MSI payload does not match the candidate agent EXE.'
+        }
         & (Join-Path $PSScriptRoot '..\e2e\guest-scenarios.ps1') -Agent $executable `
             -DistDirectory $PluginDistDirectory -ArtifactsDirectory $ArtifactsDirectory
     }

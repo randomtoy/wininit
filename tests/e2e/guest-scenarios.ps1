@@ -95,7 +95,7 @@ plugins:
       process:
         executable: '$($images['powershell'])'
         sha256: '$($pins['powershell'])'
-        timeout_seconds: 30
+        timeout_seconds: 60
 reboot:
   policy: never
 "@
@@ -224,6 +224,24 @@ try {
     $null = Start-Scenario 'failed'
     if ([IO.File]::ReadAllText($counter) -ne '2') { throw 'Failed PowerShell execution replayed.' }
     Pass 'Failed PowerShell execution requires a new execution ID'
+
+    Stop-Agent
+    $executionID = "reboot-request-$id"
+    [IO.File]::WriteAllText((Join-Path $seed 'user-data'), ($payload + "exit 3010`n"), $utf8)
+    $scriptPin = (Get-FileHash -LiteralPath (Join-Path $seed 'user-data') -Algorithm SHA256).Hash.ToLowerInvariant()
+    Write-Configuration $true $false $false $true
+    $requested = Start-Scenario 'reboot_required'
+    $rebootJournal = @($requested.lifecycle.executions.PSObject.Properties.Value | Where-Object { $_.status -eq 'reboot_required' })
+    if ([IO.File]::ReadAllText($counter) -ne '3' -or $rebootJournal.Count -ne 1 -or $rebootJournal[0].exit_code -ne 3010) {
+        throw 'PowerShell reboot request did not retain its numeric journal evidence.'
+    }
+    Pass 'Exit 3010 records an administrator reboot request without restarting Windows'
+    Stop-Agent
+    $reused = Start-Scenario 'reboot_required' ([int]$requested.lifecycle.attempts.hostname + 1)
+    if ([IO.File]::ReadAllText($counter) -ne '3' -or -not $reused.lifecycle.plugins.powershell_user_data.reused) {
+        throw 'Pending reboot execution replayed across a service restart.'
+    }
+    Pass 'Pending reboot journal survives service restart without replay'
 
     $raw = (& $Agent status --json) -join "`n"
     if ($LASTEXITCODE -ne 0) { throw 'Final status failed.' }

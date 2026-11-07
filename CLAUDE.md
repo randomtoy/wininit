@@ -117,7 +117,8 @@ Windows behavior.
 `tests/e2e/Invoke-NoRebootAcceptance.ps1` is the repeatable elevated guest
 suite. It refuses existing service/ProgramData/install/state roots, exercises
 MSI baseline-to-candidate upgrade, LocalSystem external plugin success/failure/
-replay/disablement and uninstall, and cleans only proven-owned resources.
+replay/disablement, request-only exit 3010 and uninstall, and cleans only
+proven-owned resources. Verify installed MSI payload against the candidate EXE.
 Baseline CI MSI is a same-source lower-version fixture, not historical-release
 migration evidence. Record boot/name before and after; never rename or reboot.
 PowerShell 5.1 runs this same script in CI. The separate manual rename/media/
@@ -402,6 +403,10 @@ precondition outside wininit; do not imply the plugin manages groups or sshd.
 - Use MSI-native service registration and control with stable component GUIDs
   and a stable UpgradeCode.
 - Map release versions deterministically to MSI-compatible numeric versions.
+- Keep WiX intermediate/restore outputs per bundle under DIST_DIR/obj so a
+  lower-version fixture cannot reuse the candidate's compiler/binder cache.
+  Ignore generated artifacts/ diagnostics and legacy packaging/wix/bin and obj
+  outputs for truthful source cleanliness.
 - Write `SHA256SUMS` as UTF-8 without a byte-order mark and with LF line
   endings so standard Windows and Unix verification tools agree.
 - Preserve operational state and administrator-owned configuration through

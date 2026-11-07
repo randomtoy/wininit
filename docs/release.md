@@ -21,6 +21,8 @@ omit `-RequireClean`; `source_modified` records their status. `-SkipBuild` still
 checks the installed build metadata and requires all five EXEs from this source
 commit. Numeric versions map to the documented MSI version limits; `v0.0.0`
 cannot be the candidate in the upgrade suite because its fixture is `0.0.0`.
+WiX restore/compiler/binder intermediates live in each bundle's `obj` directory,
+isolating baseline and candidate caches; they are not distribution subjects.
 
 The bundle contains six binaries: the agent EXE/MSI and four plugin EXEs. MSI
 installs only the agent. All seven logical plugins remain disabled by default.

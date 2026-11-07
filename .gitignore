@@ -1,6 +1,9 @@
 /bin/
 /dist/
 /coverage/
+/artifacts/
+/packaging/wix/bin/
+/packaging/wix/obj/
 *.test
 *.out
 *.log

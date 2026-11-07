@@ -50,6 +50,7 @@ if ($SigningCertificateThumbprint) {
 $wixProject = Join-Path $repoRoot 'packaging\wix\WinInit.wixproj'
 $configurationFile = Join-Path $repoRoot 'packaging\wix\wininit.yaml'
 $outputPath = [IO.Path]::GetFullPath($DistDirectory) + [IO.Path]::DirectorySeparatorChar
+$intermediatePath = ([IO.Path]::GetFullPath((Join-Path $DistDirectory 'obj'))).Replace('\', '/') + '/'
 $msbuildArguments = @(
     'build',
     $wixProject,
@@ -58,6 +59,8 @@ $msbuildArguments = @(
     "-p:MsiProductVersion=$msiVersion",
     "-p:SourceExe=$exePath",
     "-p:ConfigurationFile=$configurationFile",
+    "-p:BaseIntermediateOutputPath=$intermediatePath",
+    "-p:IntermediateOutputPath=${intermediatePath}Release/",
     "-p:OutputPath=$outputPath"
 )
 

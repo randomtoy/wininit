@@ -30,6 +30,8 @@ installed protected ACLs, default disablement and agent-only MSI payload,
 major-upgrade preservation, machine-wide LocalSystem lock, separate verified
 NoCloud/ConfigDrive/hostname processes, explicit pinned PowerShell success,
 failure/replay protection, missing disabled EXEs, redacted output and uninstall.
+Exit 3010 must persist a reboot request across service restarts without replay
+or an actual Windows reboot.
 NoCloud and ConfigDrive use local seeds and the existing hostname. PowerShell
 writes only a benign fixture counter and requires LocalSystem identity.
 Every service restart waits for fresh checkpoint generation/source attempts;
