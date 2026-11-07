@@ -149,9 +149,13 @@ cloud metadata or make tests pass.
 
 Dependencies and build actions are kept minimal and pinned where practical.
 Release workflows use minimal permissions and never expose release credentials
-to untrusted pull-request code. MVP artifacts are unsigned; users must verify
-published SHA-256 checksums. Code signing, provenance, and SBOM publication are
-planned release-hardening work.
+to untrusted pull-request code. Hosted artifacts remain unsigned. Trusted-tag
+jobs are prepared to attest the checksum manifest's provenance and per-EXE
+CycloneDX SBOMs through GitHub OIDC; consumers authenticate that manifest before
+checking content hashes. Optional Authenticode signing uses an existing
+certificate provider, SHA-256/timestamps and fail-closed verification. No
+production certificate or tag/OIDC release run has been validated yet. See
+[release preparation](release.md) for exact trust and inventory boundaries.
 
 ## Reporting
 

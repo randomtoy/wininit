@@ -57,9 +57,12 @@ narrower SSH guest checks and their cleanup. No restart was authorized or run.
 
 ## Artifacts
 
-The foundation release target is an unsigned Windows AMD64 executable and MSI.
-The MSI is intended for per-machine unattended installation and upgrade. Code
-signing, provenance, and SBOM publication are release-hardening roadmap items.
+The hosted candidate remains unsigned Windows AMD64 EXEs and an agent-only MSI.
+The no-reboot suite tests unattended install, same-source lower-version MSI
+upgrade and uninstall. Per-EXE SBOMs, exact inventories/checksums, optional
+certificate signing and trusted-tag OIDC attestations are prepared. Actual
+production signing, tag publication and historical-release migration remain
+unverified. See [release gates](release.md).
 The optional ConfigDrive executable is a separate artifact in the same
 repository and checksum manifest; MSI does not install it automatically.
 

@@ -1,4 +1,70 @@
-# Datasource and hostname VM acceptance
+# Guest E2E acceptance
+
+## Automated suite without reboot
+
+Run on a disposable, licensed, elevated, non-domain-joined Windows AMD64 guest.
+The script refuses a pre-existing `wininit` service, ProgramData/ProgramFiles
+WinInit directory, production Registry state or pending hostname change. It
+owns only resources proven absent before installation; ordinary MSI uninstall
+preserves configuration/state, after which the harness removes its own fixtures.
+It never changes accounts, passwords, SSH policy, active/configured hostname or
+reboots Windows. It records boot/name before and after and fails if either
+changes. Take a snapshot before an acceptance run; a failed cleanup preserves
+resources still used by a remaining service for diagnosis.
+
+Build a lower-version fixture and candidate on Windows, or download the exact
+`wininit-windows-amd64` artifact from successful push CI. CI packages include
+`baseline/wininit-windows-amd64.msi` from the same source with version `0.0.0`.
+Do not describe this fixture as a historical-release migration test.
+
+```powershell
+./scripts/package.ps1 -Version 0.0.0 -DistDirectory ./dist/baseline -RequireClean
+./scripts/package.ps1 -Version 0.1.0 -RequireClean
+./tests/e2e/Invoke-NoRebootAcceptance.ps1 -DistDirectory ./dist `
+  -BaselineMsiPath ./dist/baseline/wininit-windows-amd64.msi -BaselineVersion 0.0.0 `
+  -ArtifactsDirectory './artifacts/msi logs' -Provider qemu -ExpectedServer 2025
+```
+
+The same harness runs under Windows PowerShell 5.1 in native CI. It checks
+installed protected ACLs, default disablement and agent-only MSI payload,
+major-upgrade preservation, machine-wide LocalSystem lock, separate verified
+NoCloud/ConfigDrive/hostname processes, explicit pinned PowerShell success,
+failure/replay protection, missing disabled EXEs, redacted output and uninstall.
+NoCloud and ConfigDrive use local seeds and the existing hostname. PowerShell
+writes only a benign fixture counter and requires LocalSystem identity.
+Every service restart waits for fresh checkpoint generation/source attempts;
+an earlier stored success/failure cannot satisfy the next assertion.
+
+Keep `acceptance.json`, `plugin-cases.json` and verbose MSI logs together.
+The report records source commit/dirty status, candidate and baseline hashes,
+Windows/PowerShell versions, model, declared provider, boot/name checks, cleanup,
+passed cases and explicit skipped cases. Diagnostics contain fixture data only;
+review before sharing. A failed script must not be summarized as a passing run.
+See [release gates](../../docs/release.md) for remaining validation.
+
+## Administrator-provisioned matrix runners
+
+`.github/workflows/e2e.yml` is manual-only and has four cells:
+Server 2022/2025 × QEMU/OpenStack. Provision disposable isolated licensed guests
+and an elevated self-hosted runner per cell with labels `wininit-e2e`,
+`server-2022` or `server-2025`, and `qemu` or `openstack` (plus the normal
+`self-hosted`, `Windows`, `X64`). Git, GitHub CLI, runner dependencies and outbound
+artifact access must already work; Windows PowerShell 5.1 runs acceptance.
+
+Dispatch only a reviewed repository commit and provide its successful **push**
+CI run ID. The workflow checks repository, workflow identity, successful
+conclusion and exact source SHA before downloading artifacts, then checks the
+manifest source. Never route pull-request/fork code to these privileged guests.
+Runner labels declare placement; they do not prove KVM acceleration or cloud
+identity. No Windows images/keys or cloud credentials are distributed and no
+runner/cloud VM is provisioned automatically by this workflow.
+
+This matrix entry point covers the no-reboot subset only. Clean-image boot,
+media attachment, real rename/reboot/resume and historical-release migrations
+still require dedicated infrastructure and separately recorded runs. The
+following manual contract remains pending across the full matrix.
+
+## Datasource and hostname VM acceptance with administrator reboot
 
 This procedure is pending execution. It requires a disposable, licensed,
 non-domain-joined Windows Server 2022 or 2025 AMD64 VM. Hosted CI does not run a

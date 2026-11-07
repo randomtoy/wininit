@@ -79,14 +79,15 @@ jobs:
       - name: Run isolated Windows integration tests
         if: success() || steps.windows-unit.outcome == 'failure'
         run: go test -tags=integration ./...
-      - name: Build signed-version metadata and unsigned packages
+      - name: Build unsigned draft packages and SBOMs
         id: package
         shell: pwsh
         run: |
           $tag = $env:GITHUB_REF_NAME
           $msiVersion = $tag.Substring(1)
           "msi_version=$msiVersion" >> $env:GITHUB_OUTPUT
-          ./scripts/package.ps1 -Version $tag
+          ./scripts/package.ps1 -Version 0.0.0 -DistDirectory ./dist/baseline -RequireClean
+          ./scripts/package.ps1 -Version $tag -RequireClean
           ./tests/integration/checksums.ps1 -DistDirectory ./dist
       - name: Verify executable metadata
         shell: pwsh
@@ -96,14 +97,23 @@ jobs:
           if ($output -notlike "*$env:GITHUB_REF_NAME*") {
             throw "Version output '$output' does not contain '$env:GITHUB_REF_NAME'."
           }
-      - name: Exercise silent MSI install and uninstall
+      - name: Test release integrity failures
         shell: pwsh
+        run: ./tests/integration/release-bundle.ps1 -DistDirectory ./dist
+      - name: No-reboot acceptance and MSI upgrade
+        shell: powershell
         run: |
-          ./tests/integration/msi-smoke.ps1 `
-            -MsiPath ./dist/wininit-windows-amd64.msi `
-            -ExpectedMsiVersion '${{ steps.package.outputs.msi_version }}' `
-            -ExpectedExecutableVersion "$env:GITHUB_REF_NAME" `
-            -ArtifactsDirectory ./artifacts
+          ./tests/e2e/Invoke-NoRebootAcceptance.ps1 -DistDirectory ./dist `
+            -BaselineMsiPath ./dist/baseline/wininit-windows-amd64.msi -BaselineVersion 0.0.0 `
+            -ArtifactsDirectory './artifacts/msi logs' -Provider github-hosted
+      - name: Upload acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: release-acceptance-${{ github.run_id }}
+          path: artifacts/**
+          if-no-files-found: ignore
+          retention-days: 30
       - name: Stage diagnostics on failure
         if: failure()
         shell: pwsh
@@ -132,36 +142,131 @@ jobs:
             dist/wininit-plugin-powershell-windows-amd64.exe
             dist/wininit-plugin-nocloud-windows-amd64.exe
             dist/wininit-plugin-hostname-windows-amd64.exe
+            dist/*.cdx.json
+            dist/release-manifest.json
             dist/SHA256SUMS
           if-no-files-found: error
           retention-days: 30
 
-  publish:
-    name: Publish GitHub Release
+  attest:
+    name: Attest exact release subjects
     needs: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Download checked artifacts
+        uses: actions/download-artifact@9000827ccba6dbab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: release-${{ github.ref_name }}
+          path: dist
+      - name: Verify checksums
+        working-directory: dist
+        run: sha256sum --strict -c SHA256SUMS
+      - name: Attest checksum manifest provenance
+        id: provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          create-storage-record: false
+          subject-path: dist/SHA256SUMS
+      - name: Attest wininit SBOM
+        id: wininit
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          create-storage-record: false
+          subject-path: dist/wininit-windows-amd64.exe
+          sbom-path: dist/wininit-windows-amd64.exe.cdx.json
+      - name: Attest wininit-plugin-configdrive SBOM
+        id: wininit_plugin_configdrive
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          create-storage-record: false
+          subject-path: dist/wininit-plugin-configdrive-windows-amd64.exe
+          sbom-path: dist/wininit-plugin-configdrive-windows-amd64.exe.cdx.json
+      - name: Attest wininit-plugin-powershell SBOM
+        id: wininit_plugin_powershell
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          create-storage-record: false
+          subject-path: dist/wininit-plugin-powershell-windows-amd64.exe
+          sbom-path: dist/wininit-plugin-powershell-windows-amd64.exe.cdx.json
+      - name: Attest wininit-plugin-nocloud SBOM
+        id: wininit_plugin_nocloud
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          create-storage-record: false
+          subject-path: dist/wininit-plugin-nocloud-windows-amd64.exe
+          sbom-path: dist/wininit-plugin-nocloud-windows-amd64.exe.cdx.json
+      - name: Attest wininit-plugin-hostname SBOM
+        id: wininit_plugin_hostname
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          create-storage-record: false
+          subject-path: dist/wininit-plugin-hostname-windows-amd64.exe
+          sbom-path: dist/wininit-plugin-hostname-windows-amd64.exe.cdx.json
+      - name: Collect offline verification bundles
+        env:
+          PROVENANCE: ${{ steps.provenance.outputs.bundle-path }}
+          WININIT: ${{ steps.wininit.outputs.bundle-path }}
+          WININIT_PLUGIN_CONFIGDRIVE: ${{ steps.wininit_plugin_configdrive.outputs.bundle-path }}
+          WININIT_PLUGIN_POWERSHELL: ${{ steps.wininit_plugin_powershell.outputs.bundle-path }}
+          WININIT_PLUGIN_NOCLOUD: ${{ steps.wininit_plugin_nocloud.outputs.bundle-path }}
+          WININIT_PLUGIN_HOSTNAME: ${{ steps.wininit_plugin_hostname.outputs.bundle-path }}
+        shell: bash
+        run: |
+          mkdir -p dist/attestations
+          cp "$PROVENANCE" dist/attestations/provenance.sigstore.json
+          cp "$WININIT" dist/attestations/wininit.sigstore.json
+          cp "$WININIT_PLUGIN_CONFIGDRIVE" dist/attestations/wininit-plugin-configdrive.sigstore.json
+          cp "$WININIT_PLUGIN_POWERSHELL" dist/attestations/wininit-plugin-powershell.sigstore.json
+          cp "$WININIT_PLUGIN_NOCLOUD" dist/attestations/wininit-plugin-nocloud.sigstore.json
+          cp "$WININIT_PLUGIN_HOSTNAME" dist/attestations/wininit-plugin-hostname.sigstore.json
+      - name: Upload attested release bundle
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: attested-release-${{ github.ref_name }}
+          path: dist/**
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Prepare draft prerelease
+    needs: attest
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: write
     steps:
-      - name: Download release artifacts
+      - name: Download attested artifacts
         uses: actions/download-artifact@9000827ccba6dbab643e8b6fd33ac0654aef8333 # v8
         with:
-          name: release-${{ github.ref_name }}
+          name: attested-release-${{ github.ref_name }}
           path: dist
-      - name: Publish release with generated notes
+      - name: Verify exact bytes before upload
+        working-directory: dist
+        run: sha256sum --strict -c SHA256SUMS
+      - name: Create draft with explicit readiness limits
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            dist/wininit-windows-amd64.exe \
-            dist/wininit-windows-amd64.msi \
-            dist/wininit-plugin-configdrive-windows-amd64.exe \
-            dist/wininit-plugin-powershell-windows-amd64.exe \
-            dist/wininit-plugin-nocloud-windows-amd64.exe \
-            dist/wininit-plugin-hostname-windows-amd64.exe \
-            dist/SHA256SUMS \
-            --verify-tag \
-            --title "$GITHUB_REF_NAME" \
-            --generate-notes
+          cat > release-notes.md <<'NOTES'
+          This is an unsigned draft candidate. All plugins are disabled by default;
+          the MSI installs only the agent. Verify the SHA256SUMS provenance
+          attestation before checking artifact hashes and per-EXE CycloneDX SBOMs.
+
+          Automated evidence covers no-reboot installation, same-source lower-version
+          MSI upgrade, plugin initialization, failure/replay handling and uninstall.
+          Server 2022, attached-media/cloud creation, full reboot/rename matrix,
+          historical-release upgrade and production certificate signing remain gates
+          before stable publication. See docs/release.md and the CI acceptance report.
+          NOTES
+          assets=(dist/SHA256SUMS dist/release-manifest.json dist/wininit-windows-amd64.msi dist/attestations/provenance.sigstore.json)
+          for name in wininit wininit-plugin-configdrive wininit-plugin-powershell wininit-plugin-nocloud wininit-plugin-hostname; do
+            assets+=("dist/$name-windows-amd64.exe" "dist/$name-windows-amd64.exe.cdx.json" "dist/attestations/$name.sigstore.json")
+          done
+          gh release create "$GITHUB_REF_NAME" "${assets[@]}" --verify-tag \
+            --title "$GITHUB_REF_NAME" --notes-file release-notes.md --generate-notes --draft --prerelease
