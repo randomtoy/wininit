@@ -62,11 +62,26 @@ function Invoke-MsiExec {
         if ($argument.Contains('"') -or $argument.EndsWith('\')) { throw 'Unsafe MSI argument.' }
     }
     $quoted = ($Arguments | ForEach-Object { '"' + $_ + '"' }) -join ' '
+    Write-Host "MSI begin: $([IO.Path]::GetFileName($Arguments[-1]))"
+    # Start-Process -Wait waits for a process tree on Windows. Wait for the
+    # specific client instead; installed automatic services are long lived.
     $process = Start-Process -FilePath "$env:SystemRoot\System32\msiexec.exe" `
-        -ArgumentList $quoted -Wait -PassThru
-    if ($process.ExitCode -ne 0) {
-        throw "msiexec failed with exit code $($process.ExitCode): $($Arguments -join ' ')"
+        -ArgumentList $quoted -PassThru
+    try {
+        $null = $process.Handle
+        if (-not $process.WaitForExit(120000)) {
+            # Only this owned client is terminated. Never kill a system-wide
+            # msiexec/service by name; preserve any still-registered product.
+            $process.Kill()
+            $process.WaitForExit()
+            throw 'Owned msiexec client exceeded two minutes; inspect the verbose MSI log.'
+        }
+        if ($process.ExitCode -ne 0) {
+            throw "msiexec failed with exit code $($process.ExitCode): $($Arguments -join ' ')"
+        }
+        Write-Host "MSI complete: $([IO.Path]::GetFileName($Arguments[-1]))"
     }
+    finally { $process.Dispose() }
 }
 
 function Wait-ServiceAbsent {

@@ -468,6 +468,8 @@ precondition outside wininit; do not imply the plugin manages groups or sshd.
   Use explicit bounded ServiceController waits and dispose SCM handles before
   major upgrades; failed-start cases require fresh state, never an implicit
   unbounded wait for a transient running state.
+  Wait on the owned msiexec client with a deadline, not Start-Process's process
+  tree (installed services are long lived); never terminate msiexec by name.
 - Keep structured startup milestones around lock acquisition and the first
   Registry checkpoint so SCM-running/engine-starting failures are diagnosable.
 - Release jobs run only for trusted version tags and prepare draft prereleases.
