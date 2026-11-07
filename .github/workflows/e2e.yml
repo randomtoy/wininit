@@ -57,6 +57,7 @@ jobs:
           github-token: ${{ github.token }}
           path: dist
       - name: Check source binding and run no-reboot acceptance
+        timeout-minutes: 12
         shell: powershell
         run: |
           $manifest = Get-Content ./dist/release-manifest.json -Raw | ConvertFrom-Json

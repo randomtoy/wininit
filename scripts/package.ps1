@@ -40,6 +40,10 @@ $metadata = (& $exePath version --json | ConvertFrom-Json)
 if ($LASTEXITCODE -ne 0 -or $metadata.version -cne $Version) {
     throw 'Agent executable version does not match the requested package version.'
 }
+$sourceCommit = & git -C $repoRoot rev-parse --verify HEAD
+if ($LASTEXITCODE -ne 0 -or $metadata.commit -cne $sourceCommit) {
+    throw 'Agent executable commit metadata does not match the source checkout.'
+}
 if ($SigningCertificateThumbprint) {
     $images = @('wininit', 'wininit-plugin-configdrive', 'wininit-plugin-powershell', 'wininit-plugin-nocloud', 'wininit-plugin-hostname') |
         ForEach-Object { Join-Path $DistDirectory "$_-windows-amd64.exe" }

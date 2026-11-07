@@ -5,6 +5,8 @@
 Run in native 64-bit PowerShell on a disposable, licensed, elevated,
 non-domain-joined Windows AMD64 guest. A 32-bit/ARM64 shell is refused before
 reading installation/state paths, so Registry and ProgramFiles views agree.
+Physical DNS, configured TCP/IP and active/pending NetBIOS names must agree;
+the seed uses the adapter's physical DNS name, never a truncated NetBIOS alias.
 The script refuses a pre-existing `wininit` service, ProgramData/ProgramFiles
 WinInit directory, production Registry state, registered related MSI product or
 pending hostname change. It

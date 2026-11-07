@@ -124,6 +124,9 @@ migration evidence. Record boot/name before and after; never rename or reboot.
 PowerShell 5.1 runs this same script in CI. The separate manual rename/media/
 reboot contract in `tests/e2e/README.md` remains pending for the full matrix.
 Use native 64-bit PowerShell on AMD64 so MSI paths and Registry views agree.
+Snapshot physical DNS via GetComputerNameEx plus TCP/IP NV Hostname, NetBIOS
+active/pending names and boot time. Refuse inconsistent names and seed only the
+physical name; a truncated NetBIOS alias must never become a rename target.
 Read-only MsiEnumRelatedProductsW checks reject an existing/orphaned MSI
 registration before installation and cleanup. Never query Win32_Product or
 erase owned files/state while a related MSI product is still registered.
@@ -429,12 +432,15 @@ precondition outside wininit; do not imply the plugin manages groups or sshd.
 - Unsigned artifacts are acceptable only while the MVP documentation states
   this limitation. Never describe unsigned artifacts as trusted.
 - Optional signing uses an existing store/provider certificate thumbprint and
-  HTTPS RFC3161 timestamp, SHA-256, and fail-closed SignTool verification.
+  HTTPS RFC3161 timestamp without credentials/query/fragment, SHA-256, and
+  fail-closed SignTool verification.
   Sign all EXEs before constructing MSI, then sign MSI, then generate metadata.
   Never accept private-key passwords in argv or modify machine trust stores.
   Hosted candidates remain unsigned; production signing validation is pending.
 - Require clean source for CI/release inventories. Local dirty builds must
   record source_modified. Integrity verification is not publisher authentication.
+  Verify the agent CLI's version/commit labels even with SkipBuild, in addition
+  to all EXEs' own Go VCS build information.
 
 ## CI/CD instructions
 
@@ -457,6 +463,8 @@ precondition outside wininit; do not imply the plugin manages groups or sshd.
 - After an MSI upgrade, wait for a fresh running lifecycle generation and SCM
   running before the foreground lock probe; SCM readiness alone precedes lock
   acquisition and can make that probe race the service.
+- Persist passed guest cases incrementally and log fixed progress labels. Bound
+  the suite step below the job timeout so failure evidence can still upload.
 - Keep structured startup milestones around lock acquisition and the first
   Registry checkpoint so SCM-running/engine-starting failures are diagnosable.
 - Release jobs run only for trusted version tags and prepare draft prereleases.

@@ -33,10 +33,12 @@ foreach ($path in @($configRoot, $installRoot, $state)) {
 }
 if (Get-Service wininit -ErrorAction SilentlyContinue) { throw 'Refusing a pre-existing wininit service.' }
 & (Join-Path $PSScriptRoot '..\integration\assert-no-msi-product.ps1')
-$namePath = 'Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\ComputerName'
-$active = (Get-ItemProperty -LiteralPath "$namePath\ActiveComputerName").ComputerName
-$pending = (Get-ItemProperty -LiteralPath "$namePath\ComputerName").ComputerName
-if ($active -ine $pending) { throw 'Refusing a host with a pending hostname change.' }
+$before = & (Join-Path $PSScriptRoot 'host-snapshot.ps1')
+$active = $before.Active
+$pending = $before.Pending
+if ($active -ine $pending -or $active -ine $before.NetBiosActive -or $before.NetBiosActive -ine $before.NetBiosPending) {
+    throw 'Refusing a host with pending or inconsistent DNS/NetBIOS names.'
+}
 New-Item -ItemType Directory -Path $ArtifactsDirectory -Force | Out-Null
 $artifacts = (Resolve-Path -LiteralPath $ArtifactsDirectory).Path
 $report = [ordered]@{
@@ -45,7 +47,7 @@ $report = [ordered]@{
     provider_declared = $Provider; os = $os.Caption; os_version = $os.Version; architecture = $os.OSArchitecture
     manufacturer = $computer.Manufacturer; model = $computer.Model
     powershell = $PSVersionTable.PSVersion.ToString(); started_utc = [DateTime]::UtcNow.ToString('o')
-    boot_before = $os.LastBootUpTime.ToUniversalTime().ToString('o'); hostname_before = $active
+    boot_before = $before.BootUtc; hostname_before = $active; names_before = $before; names_after = $null
     candidate_msi_sha256 = (Get-FileHash -LiteralPath (Join-Path $dist 'wininit-windows-amd64.msi') -Algorithm SHA256).Hash.ToLowerInvariant()
     baseline_msi_sha256 = (Get-FileHash -LiteralPath $baseline -Algorithm SHA256).Hash.ToLowerInvariant()
     cases = @(); cleanup = 'not_run'; boot_after = $null; hostname_after = $null; error = $null
@@ -82,10 +84,12 @@ finally {
     }
     catch { $report.result = 'failed'; $report.cleanup = 'failed'; throw }
     finally {
-        $report.boot_after = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('o')
-        $report.hostname_after = (Get-ItemProperty -LiteralPath "$namePath\ActiveComputerName").ComputerName
-        $afterPending = (Get-ItemProperty -LiteralPath "$namePath\ComputerName").ComputerName
-        $unchanged = $report.boot_before -eq $report.boot_after -and $active -ieq $report.hostname_after -and $pending -ieq $afterPending
+        $after = & (Join-Path $PSScriptRoot 'host-snapshot.ps1')
+        $report.names_after = $after
+        $report.boot_after = $after.BootUtc
+        $report.hostname_after = $after.Active
+        $unchanged = $before.BootUtc -eq $after.BootUtc -and $active -ieq $after.Active -and $pending -ieq $after.Pending -and
+            $before.NetBiosActive -ieq $after.NetBiosActive -and $before.NetBiosPending -ieq $after.NetBiosPending
         if (-not $unchanged) { $report.result = 'failed' }
         $report | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $artifacts 'acceptance.json') -Encoding UTF8
         if (-not $unchanged) { throw 'Boot timestamp or active/configured hostname changed during no-reboot acceptance.' }

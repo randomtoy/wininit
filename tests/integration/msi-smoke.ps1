@@ -81,12 +81,7 @@ function Wait-ServiceAbsent {
 }
 
 function Get-HostNameState {
-    $activePath = 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ActiveComputerName'
-    $pendingPath = 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName'
-    return [PSCustomObject]@{
-        Active  = (Get-ItemPropertyValue -LiteralPath $activePath -Name 'ComputerName' -ErrorAction Stop)
-        Pending = (Get-ItemPropertyValue -LiteralPath $pendingPath -Name 'ComputerName' -ErrorAction Stop)
-    }
+    return & (Join-Path $PSScriptRoot '..\e2e\host-snapshot.ps1')
 }
 
 function Assert-HostNameUnchanged {
@@ -96,8 +91,10 @@ function Assert-HostNameUnchanged {
     )
 
     $actual = Get-HostNameState
-    if ($actual.Active -ne $Expected.Active -or $actual.Pending -ne $Expected.Pending) {
-        throw "Host name changed during $Phase (active '$($Expected.Active)' -> '$($actual.Active)', pending '$($Expected.Pending)' -> '$($actual.Pending)')."
+    if ($actual.Active -ne $Expected.Active -or $actual.Pending -ne $Expected.Pending -or
+        $actual.NetBiosActive -ne $Expected.NetBiosActive -or $actual.NetBiosPending -ne $Expected.NetBiosPending -or
+        $actual.BootUtc -ne $Expected.BootUtc) {
+        throw "Host name or boot timestamp changed during $Phase (active '$($Expected.Active)' -> '$($actual.Active)', pending '$($Expected.Pending)' -> '$($actual.Pending)')."
     }
 }
 

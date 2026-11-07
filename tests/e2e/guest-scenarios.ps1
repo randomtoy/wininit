@@ -128,6 +128,7 @@ function Wait-Provisioning([string]$Expected, [int]$MinimumAttempts = 0) {
     throw "Provisioning did not reach $Expected."
 }
 function Start-Scenario([string]$Expected, [int]$MinimumAttempts = 0) {
+    Write-Host "Waiting for fresh $Expected provisioning from $source."
     $prior = (& $Agent status --json | ConvertFrom-Json)
     if ($LASTEXITCODE -ne 0) { throw 'Cannot read status before service start.' }
     $lifecycle = $null
@@ -146,7 +147,11 @@ function Start-Scenario([string]$Expected, [int]$MinimumAttempts = 0) {
     catch { if ($Expected -ne 'failed') { throw } }
     return Wait-Provisioning $Expected $MinimumAttempts
 }
-function Pass([string]$Name) { $cases.Add([PSCustomObject]@{ name = $Name; result = 'passed' }) }
+function Pass([string]$Name) {
+    $cases.Add([PSCustomObject]@{ name = $Name; result = 'passed' })
+    $cases | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $ArtifactsDirectory 'plugin-cases.json') -Encoding UTF8
+    Write-Host "Passed: $Name"
+}
 
 if (Test-Path -LiteralPath $root) { throw 'Fixture directory already exists.' }
 if (Test-Path -LiteralPath $state) { throw 'Fixture Registry key already exists.' }
@@ -163,7 +168,10 @@ try {
         Protect-Path $images[$name] $true
         $pins[$name] = (Get-FileHash -LiteralPath $images[$name] -Algorithm SHA256).Hash.ToLowerInvariant()
     }
-    $hostname = [Environment]::MachineName
+    $snapshot = & (Join-Path $PSScriptRoot 'host-snapshot.ps1')
+    if ($snapshot.Active -ine $snapshot.Pending -or $snapshot.Active -ine $snapshot.NetBiosActive -or
+        $snapshot.NetBiosActive -ine $snapshot.NetBiosPending) { throw 'Host DNS/NetBIOS names changed or disagree; do not request a rename.' }
+    $hostname = $snapshot.Active
     [IO.File]::WriteAllText((Join-Path $seed 'meta-data'), "instance-id: e2e-$id`nlocal-hostname: $hostname`n", $utf8)
     $cloudVersion = Join-Path $seed 'openstack\2025-04-04'
     New-Item -ItemType Directory -Path $cloudVersion | Out-Null

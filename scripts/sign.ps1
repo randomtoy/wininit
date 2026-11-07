@@ -8,7 +8,8 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-if ($TimestampServer.Scheme -ne 'https' -or $TimestampServer.UserInfo) {
+if (-not $TimestampServer.IsAbsoluteUri -or $TimestampServer.Scheme -ne 'https' -or
+    $TimestampServer.UserInfo -or $TimestampServer.Query -or $TimestampServer.Fragment) {
     throw 'Signing requires an HTTPS RFC 3161 timestamp server without embedded credentials.'
 }
 if (-not $SignTool) {
