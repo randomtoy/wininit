@@ -17,7 +17,8 @@ if ($bytes -contains 13) {
 }
 $content = [Text.Encoding]::UTF8.GetString($bytes)
 $lines = $content.TrimEnd("`n").Split("`n")
-$expectedNames = @('wininit-windows-amd64.exe', 'wininit-windows-amd64.msi', 'wininit-plugin-configdrive-windows-amd64.exe', 'wininit-plugin-powershell-windows-amd64.exe', 'wininit-plugin-nocloud-windows-amd64.exe', 'wininit-plugin-hostname-windows-amd64.exe')
+$executables = @('wininit-windows-amd64.exe', 'wininit-plugin-configdrive-windows-amd64.exe', 'wininit-plugin-powershell-windows-amd64.exe', 'wininit-plugin-nocloud-windows-amd64.exe', 'wininit-plugin-hostname-windows-amd64.exe')
+$expectedNames = $executables + @('wininit-windows-amd64.msi') + @($executables | ForEach-Object { "$_.cdx.json" }) + @('release-manifest.json')
 if ($lines.Count -ne $expectedNames.Count) {
     throw "SHA256SUMS contains $($lines.Count) entries; expected $($expectedNames.Count)."
 }

@@ -55,6 +55,7 @@ cmd/wininit-plugin-configdrive/ separate datasource process entry point
 cmd/wininit-plugin-powershell/ separate user-data process entry point
 cmd/wininit-plugin-nocloud/ separate metadata datasource entry point
 cmd/wininit-plugin-hostname/ separate metadata provisioner entry point
+cmd/wininit-release/      builder-only bundle inventory/verifier (not distributed)
 sdk/datasource/v1/        experimental datasource protobuf/gRPC contract
 sdk/userdata/v1/          experimental prepare/execute protobuf/gRPC contract
 sdk/provisioner/v1/       experimental idempotent metadata protobuf/gRPC contract
@@ -67,11 +68,12 @@ internal/platform/        Windows operations behind narrow internal adapters
 internal/service/         SCM/console hosting and administration
 internal/state/           state model and storage implementations
 internal/version/         embedded build information
+internal/releasebundle/   fixed release subjects and build-info/SBOM validation
 plugins/datasource/       built-in datasource implementations
 plugins/provisioner/      built-in provisioner implementations
 packaging/wix/            WiX MSI source and pinned tooling
 scripts/                  build and packaging helpers
-tests/                    integration, fixtures, and future E2E tests
+tests/                    integration, fixtures, automated no-reboot and manual E2E
 docs/                     architecture, operations, and ADRs
 .github/workflows/        CI and release workflows
 ```
@@ -103,7 +105,7 @@ Do not create empty directories to imply unimplemented functionality.
 make build       build the Windows AMD64 agent and separate plugin executables
 make test        run unit tests
 make lint        validate formatting and run static analysis
-make package     build release EXE, MSI, and checksums on Windows
+make package     build EXEs, MSI, per-EXE SBOMs, manifest and checksums on Windows
 go test ./...    run tests directly
 go vet ./...     run Go static analysis directly
 ```
@@ -112,11 +114,22 @@ MSI construction, Registry integration, SCM integration, and silent installer
 smoke tests require Windows. Cross-compiling the EXE does not validate native
 Windows behavior.
 
-The manual procedure in `tests/e2e/README.md` is the acceptance contract for a
-disposable, licensed, non-domain-joined Windows Server 2022/2025 VM. It is not
-an automated command and remains unexecuted until an appropriate VM is
-available. Never claim rename, restart, or resume validation without recording
-an actual run of that procedure.
+`tests/e2e/Invoke-NoRebootAcceptance.ps1` is the repeatable elevated guest
+suite. It refuses existing service/ProgramData/install/state roots, exercises
+MSI baseline-to-candidate upgrade, LocalSystem external plugin success/failure/
+replay/disablement, request-only exit 3010 and uninstall, and cleans only
+proven-owned resources. Verify installed MSI payload against the candidate EXE.
+Baseline CI MSI is a same-source lower-version fixture, not historical-release
+migration evidence. Record boot/name before and after; never rename or reboot.
+PowerShell 5.1 runs this same script in CI. The separate manual rename/media/
+reboot contract in `tests/e2e/README.md` remains pending for the full matrix.
+Use native 64-bit PowerShell on AMD64 so MSI paths and Registry views agree.
+Snapshot physical DNS via GetComputerNameEx plus TCP/IP NV Hostname, NetBIOS
+active/pending names and boot time. Refuse inconsistent names and seed only the
+physical name; a truncated NetBIOS alias must never become a rename target.
+Read-only MsiEnumRelatedProductsW checks reject an existing/orphaned MSI
+registration before installation and cleanup. Never query Win32_Product or
+erase owned files/state while a related MSI product is still registered.
 
 `tests/e2e/2026-11-06-pr4-review.md` records a narrower Windows Server 2025 SSH
 guest run for identity/access, local-seed external ConfigDrive, SCM, and MSI.
@@ -397,6 +410,10 @@ precondition outside wininit; do not imply the plugin manages groups or sshd.
 - Use MSI-native service registration and control with stable component GUIDs
   and a stable UpgradeCode.
 - Map release versions deterministically to MSI-compatible numeric versions.
+- Keep WiX intermediate/restore outputs per bundle under DIST_DIR/obj so a
+  lower-version fixture cannot reuse the candidate's compiler/binder cache.
+  Ignore generated artifacts/ diagnostics and legacy packaging/wix/bin and obj
+  outputs for truthful source cleanliness.
 - Write `SHA256SUMS` as UTF-8 without a byte-order mark and with LF line
   endings so standard Windows and Unix verification tools agree.
 - Preserve operational state and administrator-owned configuration through
@@ -405,17 +422,36 @@ precondition outside wininit; do not imply the plugin manages groups or sshd.
   protected SYSTEM/Administrators ACLs. Preserve configuration contents across
   upgrades. Test actual installed DACLs; do not infer protection from XML.
 - Build/distribute ConfigDrive, PowerShell, NoCloud and hostname EXEs separately; MSI
-  installs only the agent. SHA256SUMS and CI/release artifacts include all six
-  binaries (five EXEs and the MSI).
+  installs only the agent. SHA256SUMS covers six binaries, five CycloneDX 1.6
+  per-EXE SBOMs and release-manifest.json (twelve fixed LF-terminated entries).
+  Use build-time cyclonedx-gomod v1.12.0 bin with stdlib and short PURLs;
+  compare module sets/versions against each binary's build info. Do not invent
+  OS/installer/license coverage. No replaced modules without reviewed policy.
+  The builder-only release command stays outside agent and plugin graphs.
 - Do not add the install directory to the machine-wide `PATH`.
 - Unsigned artifacts are acceptable only while the MVP documentation states
   this limitation. Never describe unsigned artifacts as trusted.
+- Optional signing uses an existing store/provider certificate thumbprint and
+  HTTPS RFC3161 timestamp without credentials/query/fragment, SHA-256, and
+  fail-closed SignTool verification.
+  Sign all EXEs before constructing MSI, then sign MSI, then generate metadata.
+  Never accept private-key passwords in argv or modify machine trust stores.
+  Hosted candidates remain unsigned; production signing validation is pending.
+- Require clean source for CI/release inventories. Local dirty builds must
+  record source_modified. Integrity verification is not publisher authentication.
+  Verify the agent CLI's version/commit labels even with SkipBuild, in addition
+  to all EXEs' own Go VCS build information.
 
 ## CI/CD instructions
 
 - CI must verify dependencies, formatting, vetting, tests, race tests, and the
   Windows AMD64 build.
+- Validate workflows with build-time actionlint v1.7.12 and the explicit custom
+  self-hosted labels in .github/actionlint.yaml; it is not a runtime dependency.
 - Native Windows CI must exercise isolated Registry tests and MSI validation.
+  Run native tests and packaging/E2E in independent jobs so installer diagnosis
+  does not wait for the process suite. Preserve the existing Windows and MSI
+  validation check as an always-run aggregate requiring both jobs to succeed.
   It must check elevation explicitly before tests which require SCM or MSI
   administration and report the documented outcome; it must not fabricate a
   successful smoke test.
@@ -427,10 +463,31 @@ precondition outside wininit; do not imply the plugin manages groups or sshd.
   codes; never expose raw child handshake, stderr, or RPC error contents.
 - Stage failure logs from ProgramData into the workspace artifact directory
   before upload; Windows artifacts cannot share a root across different drives.
+- After an MSI upgrade, wait for a fresh running lifecycle generation and SCM
+  running before the foreground lock probe; SCM readiness alone precedes lock
+  acquisition and can make that probe race the service.
+- Persist passed guest cases incrementally and log fixed progress labels. Bound
+  the suite step below the job timeout so failure evidence can still upload.
+  Use explicit bounded ServiceController waits and dispose SCM handles before
+  major upgrades; failed-start cases require fresh state, never an implicit
+  unbounded wait for a transient running state.
+  Wait on the owned msiexec client with a deadline, not Start-Process's process
+  tree (installed services are long lived); never terminate msiexec by name.
+  Quote only whitespace-containing MSI argument values, not command switches
+  or REBOOT properties; exercise the actual log path containing spaces in CI.
 - Keep structured startup milestones around lock acquisition and the first
   Registry checkpoint so SCM-running/engine-starting failures are diagnosable.
-- Release jobs run only for trusted version tags, use minimal token
-  permissions, produce EXE/MSI/checksums, and publish those exact artifacts.
+- Release jobs run only for trusted version tags and prepare draft prereleases.
+  After tests, a separate minimally permitted OIDC job attests SHA256SUMS
+  provenance and five EXE SBOMs, then uploads offline verification bundles.
+  Pin actions/attest v4.2.2; do not give PR jobs signing permissions. Actual tag
+  attestation remains unexecuted until an authorized release tag exists.
+- Manual guest E2E workflow targets four administrator-provisioned, licensed,
+  isolated self-hosted Server 2022/2025 × QEMU/OpenStack runners. Only reviewed
+  workflow_dispatch is allowed; bind downloads to successful push CI from this
+  repository and exact source commit. Never run PR/fork events on these runners.
+  Provider labels are declared, not proof of placement/acceleration. Full media,
+  clean-image, historical-upgrade and reboot matrix remain stage-7 gates.
 - Pin third-party actions to immutable commits where practical and keep them
   current through dependency automation.
 - The Windows jobs currently use `actions/setup-dotnet` 6.1.0 to install the

@@ -38,6 +38,8 @@ jobs:
           fi
       - name: Vet
         run: go vet ./...
+      - name: Validate workflow syntax and runner labels
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
       - name: Verify separate PowerShell build boundary
         run: ./scripts/check-plugin-boundary.sh
       - name: Unit tests
@@ -54,10 +56,46 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  windows-validation:
-    name: Windows and MSI validation
+  windows-native:
+    name: Windows native tests
     runs-on: windows-2025
     timeout-minutes: 35
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Record runner environment
+        shell: pwsh
+        run: |
+          Get-ComputerInfo | Select-Object WindowsProductName, WindowsVersion, OsBuildNumber, OsArchitecture | Format-List
+          whoami.exe /all
+      - name: Require an elevated test token
+        shell: pwsh
+        run: |
+          $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+          $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+          if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+            throw 'The Windows integration job requires administrator privileges for isolated HKLM, SCM, and MSI tests.'
+          }
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Verify dependencies
+        run: go mod verify
+      - name: Run Windows tests
+        id: windows-unit
+        run: go test ./...
+      - name: Run isolated Windows integration tests
+        if: success() || steps.windows-unit.outcome == 'failure'
+        run: go test -tags=integration ./...
+
+  windows-packaging:
+    name: Windows packaging and E2E
+    runs-on: windows-2025
+    timeout-minutes: 20
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -87,29 +125,34 @@ jobs:
           dotnet-version: 10.0.x
       - name: Verify dependencies
         run: go mod verify
-      - name: Run Windows tests
-        id: windows-unit
-        run: go test ./...
-      - name: Run isolated Windows integration tests
-        if: success() || steps.windows-unit.outcome == 'failure'
-        run: go test -tags=integration ./...
       - name: Build executable and MSI
         id: package
         shell: pwsh
         run: |
-          $build = [int64]$env:GITHUB_RUN_NUMBER % 65535
+          $build = ([int64]$env:GITHUB_RUN_NUMBER % 65534) + 1
           $version = "0.0.$build"
           "version=$version" >> $env:GITHUB_OUTPUT
-          ./scripts/package.ps1 -Version $version
+          ./scripts/package.ps1 -Version 0.0.0 -DistDirectory ./dist/baseline -RequireClean
+          ./scripts/package.ps1 -Version $version -RequireClean
           ./tests/integration/checksums.ps1 -DistDirectory ./dist
-      - name: Exercise silent MSI install and uninstall
+      - name: Test release bundle integrity failures
         shell: pwsh
+        run: ./tests/integration/release-bundle.ps1 -DistDirectory ./dist
+      - name: Run no-reboot guest acceptance with Windows PowerShell 5.1
+        timeout-minutes: 12
+        shell: powershell
         run: |
-          ./tests/integration/msi-smoke.ps1 `
-            -MsiPath ./dist/wininit-windows-amd64.msi `
-            -ExpectedMsiVersion '${{ steps.package.outputs.version }}' `
-            -ExpectedExecutableVersion '${{ steps.package.outputs.version }}' `
-            -ArtifactsDirectory ./artifacts
+          ./tests/e2e/Invoke-NoRebootAcceptance.ps1 -DistDirectory ./dist `
+            -BaselineMsiPath ./dist/baseline/wininit-windows-amd64.msi -BaselineVersion 0.0.0 `
+            -ArtifactsDirectory './artifacts/msi logs' -Provider github-hosted
+      - name: Upload acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: no-reboot-evidence-${{ github.run_id }}
+          path: artifacts/**
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Stage MSI diagnostics on failure
         if: failure()
         shell: pwsh
@@ -138,6 +181,26 @@ jobs:
             dist/wininit-plugin-powershell-windows-amd64.exe
             dist/wininit-plugin-nocloud-windows-amd64.exe
             dist/wininit-plugin-hostname-windows-amd64.exe
+            dist/wininit-windows-amd64.exe.cdx.json
+            dist/wininit-plugin-configdrive-windows-amd64.exe.cdx.json
+            dist/wininit-plugin-powershell-windows-amd64.exe.cdx.json
+            dist/wininit-plugin-nocloud-windows-amd64.exe.cdx.json
+            dist/wininit-plugin-hostname-windows-amd64.exe.cdx.json
+            dist/release-manifest.json
             dist/SHA256SUMS
+            dist/baseline/wininit-windows-amd64.msi
           if-no-files-found: error
           retention-days: 14
+
+  windows-validation:
+    name: Windows and MSI validation
+    needs: [windows-native, windows-packaging]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require both independent Windows jobs
+        env:
+          NATIVE_RESULT: ${{ needs.windows-native.result }}
+          PACKAGING_RESULT: ${{ needs.windows-packaging.result }}
+        run: test "$NATIVE_RESULT" = success && test "$PACKAGING_RESULT" = success
