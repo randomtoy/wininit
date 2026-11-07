@@ -449,6 +449,9 @@ precondition outside wininit; do not imply the plugin manages groups or sshd.
 - Validate workflows with build-time actionlint v1.7.12 and the explicit custom
   self-hosted labels in .github/actionlint.yaml; it is not a runtime dependency.
 - Native Windows CI must exercise isolated Registry tests and MSI validation.
+  Run native tests and packaging/E2E in independent jobs so installer diagnosis
+  does not wait for the process suite. Preserve the existing Windows and MSI
+  validation check as an always-run aggregate requiring both jobs to succeed.
   It must check elevation explicitly before tests which require SCM or MSI
   administration and report the documented outcome; it must not fabricate a
   successful smoke test.

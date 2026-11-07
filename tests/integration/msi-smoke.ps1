@@ -38,6 +38,7 @@ function Get-MsiProperty {
         [Parameter(Mandatory)][string]$Name
     )
 
+    Write-Host "Reading MSI property: $Name"
     $installer = New-Object -ComObject WindowsInstaller.Installer
     $database = $installer.GetType().InvokeMember(
         'OpenDatabase',
@@ -50,7 +51,9 @@ function Get-MsiProperty {
     $view.Execute()
     $record = $view.Fetch()
     if ($null -eq $record) { throw "MSI property '$Name' is missing." }
-    return $record.StringData(1)
+    $value = $record.StringData(1)
+    Write-Host "Read MSI property: $Name"
+    return $value
 }
 
 function Invoke-MsiExec {
