@@ -14,6 +14,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+if (-not [Environment]::Is64BitProcess -or $env:PROCESSOR_ARCHITECTURE -ne 'AMD64') {
+    throw 'MSI smoke requires native 64-bit PowerShell on Windows AMD64.'
+}
 
 if (-not $ArtifactsDirectory) {
     $ArtifactsDirectory = Join-Path (Get-Location) 'artifacts'
@@ -125,6 +128,7 @@ if ($null -ne $existingService) {
 if (Test-Path -LiteralPath 'HKLM:\SOFTWARE\Wininit\Installation') {
     throw 'An MSI ownership marker already exists. Refusing to alter a pre-existing product.'
 }
+& (Join-Path $PSScriptRoot 'assert-no-msi-product.ps1')
 $originalHostName = Get-HostNameState
 
 $installed = $false
@@ -171,6 +175,13 @@ try {
     }
     $managedBy = Get-ItemPropertyValue -LiteralPath $installationKey -Name 'ManagedBy' -ErrorAction Stop
     if ($managedBy -ne 'MSI') { throw "Unexpected MSI management marker '$managedBy'." }
+    $refusedRegisteredProduct = $false
+    try { & (Join-Path $PSScriptRoot 'assert-no-msi-product.ps1') }
+    catch {
+        if ($_.Exception.Message -notlike 'A registered WinInit MSI product remains*') { throw }
+        $refusedRegisteredProduct = $true
+    }
+    if (-not $refusedRegisteredProduct) { throw 'Read-only MSI inventory missed the installed product.' }
     # The MSI marker already guarantees this key exists. New-Item -Force would
     # replace the Registry key and erase both checkpoints and Installation.
     New-ItemProperty -LiteralPath $stateKey -Name $sentinelName -Value $sentinelValue -PropertyType String -Force | Out-Null
@@ -259,6 +270,8 @@ try {
         # Administrator-owned contents must survive a major upgrade byte for
         # byte. The sentinel shares the actual lifecycle checkpoint parent.
         Stop-Service -Name wininit -ErrorAction Stop
+        $beforeUpgrade = (& $executable status --json | ConvertFrom-Json)
+        if ($LASTEXITCODE -ne 0) { throw 'Cannot read lifecycle generation before upgrade.' }
         [IO.File]::AppendAllText($configuration, "`n# upgrade preservation $sentinelValue`n", [Text.UTF8Encoding]::new($false))
         $configurationHash = (Get-FileHash -LiteralPath $configuration -Algorithm SHA256).Hash
         Invoke-MsiExec -Arguments @('/i', $UpgradeMsiPath, '/qn', '/norestart', 'REBOOT=ReallySuppress', '/l*v', (Join-Path $ArtifactsDirectory 'msi-upgrade.log'))
@@ -274,6 +287,23 @@ try {
         $upgradedService = Get-Service wininit
         try { $upgradedService.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Running, [TimeSpan]::FromSeconds(30)) }
         finally { $upgradedService.Dispose() }
+        # SCM-running precedes engine lock/checkpoint acquisition. A foreground
+        # contention probe must not race the new service for its first lock.
+        $upgradeReady = $false
+        $upgradeDeadline = [DateTime]::UtcNow.AddSeconds(30)
+        do {
+            $upgradedStatus = (& $executable status --json | ConvertFrom-Json)
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot read upgraded lifecycle status.' }
+            if ($null -ne $upgradedStatus.PSObject.Properties['lifecycle'] -and
+                $upgradedStatus.service -eq 'running' -and $upgradedStatus.provisioning -eq 'disabled' -and
+                $upgradedStatus.lifecycle.phase -eq 'agent_running' -and
+                $upgradedStatus.lifecycle.generation -gt $beforeUpgrade.lifecycle.generation) {
+                $upgradeReady = $true
+                break
+            }
+            Start-Sleep -Milliseconds 250
+        } while ([DateTime]::UtcNow -lt $upgradeDeadline)
+        if (-not $upgradeReady) { throw 'Upgraded service did not acquire a fresh running lifecycle checkpoint.' }
         Assert-HostNameUnchanged -Expected $originalHostName -Phase 'upgrade'
     }
 
@@ -318,6 +348,7 @@ try {
     Invoke-MsiExec -Arguments @('/x', $uninstallMsi, '/qn', '/norestart', 'REBOOT=ReallySuppress', '/l*v', $uninstallLog)
     $installed = $false
     Wait-ServiceAbsent -Name 'wininit'
+    & (Join-Path $PSScriptRoot 'assert-no-msi-product.ps1')
     if (Test-Path -LiteralPath $executable) {
         throw "Executable remains after uninstall: $executable"
     }

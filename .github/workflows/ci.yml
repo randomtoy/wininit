@@ -150,7 +150,11 @@ jobs:
             dist/wininit-plugin-powershell-windows-amd64.exe
             dist/wininit-plugin-nocloud-windows-amd64.exe
             dist/wininit-plugin-hostname-windows-amd64.exe
-            dist/*.cdx.json
+            dist/wininit-windows-amd64.exe.cdx.json
+            dist/wininit-plugin-configdrive-windows-amd64.exe.cdx.json
+            dist/wininit-plugin-powershell-windows-amd64.exe.cdx.json
+            dist/wininit-plugin-nocloud-windows-amd64.exe.cdx.json
+            dist/wininit-plugin-hostname-windows-amd64.exe.cdx.json
             dist/release-manifest.json
             dist/SHA256SUMS
             dist/baseline/wininit-windows-amd64.msi

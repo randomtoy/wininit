@@ -2,9 +2,12 @@
 
 ## Automated suite without reboot
 
-Run on a disposable, licensed, elevated, non-domain-joined Windows AMD64 guest.
+Run in native 64-bit PowerShell on a disposable, licensed, elevated,
+non-domain-joined Windows AMD64 guest. A 32-bit/ARM64 shell is refused before
+reading installation/state paths, so Registry and ProgramFiles views agree.
 The script refuses a pre-existing `wininit` service, ProgramData/ProgramFiles
-WinInit directory, production Registry state or pending hostname change. It
+WinInit directory, production Registry state, registered related MSI product or
+pending hostname change. It
 owns only resources proven absent before installation; ordinary MSI uninstall
 preserves configuration/state, after which the harness removes its own fixtures.
 It never changes accounts, passwords, SSH policy, active/configured hostname or

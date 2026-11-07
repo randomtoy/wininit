@@ -123,6 +123,10 @@ Baseline CI MSI is a same-source lower-version fixture, not historical-release
 migration evidence. Record boot/name before and after; never rename or reboot.
 PowerShell 5.1 runs this same script in CI. The separate manual rename/media/
 reboot contract in `tests/e2e/README.md` remains pending for the full matrix.
+Use native 64-bit PowerShell on AMD64 so MSI paths and Registry views agree.
+Read-only MsiEnumRelatedProductsW checks reject an existing/orphaned MSI
+registration before installation and cleanup. Never query Win32_Product or
+erase owned files/state while a related MSI product is still registered.
 
 `tests/e2e/2026-11-06-pr4-review.md` records a narrower Windows Server 2025 SSH
 guest run for identity/access, local-seed external ConfigDrive, SCM, and MSI.
@@ -450,6 +454,9 @@ precondition outside wininit; do not imply the plugin manages groups or sshd.
   codes; never expose raw child handshake, stderr, or RPC error contents.
 - Stage failure logs from ProgramData into the workspace artifact directory
   before upload; Windows artifacts cannot share a root across different drives.
+- After an MSI upgrade, wait for a fresh running lifecycle generation and SCM
+  running before the foreground lock probe; SCM readiness alone precedes lock
+  acquisition and can make that probe race the service.
 - Keep structured startup milestones around lock acquisition and the first
   Registry checkpoint so SCM-running/engine-starting failures are diagnosable.
 - Release jobs run only for trusted version tags and prepare draft prereleases.

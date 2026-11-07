@@ -9,6 +9,9 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+if (-not [Environment]::Is64BitProcess -or $env:PROCESSOR_ARCHITECTURE -ne 'AMD64') {
+    throw 'Use native 64-bit PowerShell on Windows AMD64; Registry and ProgramFiles views must match the MSI.'
+}
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 if (-not (New-Object Security.Principal.WindowsPrincipal($identity)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     throw 'Acceptance testing requires an elevated administrator token on a disposable guest.'
@@ -29,6 +32,7 @@ foreach ($path in @($configRoot, $installRoot, $state)) {
     if (Test-Path -LiteralPath $path) { throw "Refusing pre-existing installation/configuration/state: $path" }
 }
 if (Get-Service wininit -ErrorAction SilentlyContinue) { throw 'Refusing a pre-existing wininit service.' }
+& (Join-Path $PSScriptRoot '..\integration\assert-no-msi-product.ps1')
 $namePath = 'Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\ComputerName'
 $active = (Get-ItemProperty -LiteralPath "$namePath\ActiveComputerName").ComputerName
 $pending = (Get-ItemProperty -LiteralPath "$namePath\ComputerName").ComputerName
@@ -64,6 +68,8 @@ finally {
     # Never erase preserved data if the owned service could still be running.
     try {
         if (Get-Service wininit -ErrorAction SilentlyContinue) { throw 'Owned service remains; preserve data for diagnosis.' }
+        & (Join-Path $PSScriptRoot '..\integration\assert-no-msi-product.ps1')
+        if (Test-Path -LiteralPath (Join-Path $state 'Installation')) { throw 'MSI ownership marker remains; preserve data for diagnosis.' }
         foreach ($path in @($configRoot, $installRoot)) {
             if (Test-Path -LiteralPath $path) {
                 $items = @((Get-Item -LiteralPath $path -Force)) + @(Get-ChildItem -LiteralPath $path -Force -Recurse)
