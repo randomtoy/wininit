@@ -8,7 +8,7 @@ Build on Windows with the .NET 10 SDK, Go, and PowerShell:
 .\scripts\package.ps1 -Version 0.1.0
 ```
 
-The script creates `dist\wininit-windows-amd64.exe`, `dist\wininit-windows-amd64.msi`, the separate ConfigDrive/PowerShell plugin EXEs, and `dist\SHA256SUMS`. MSI
+The script creates `dist\wininit-windows-amd64.exe`, `dist\wininit-windows-amd64.msi`, the separate ConfigDrive/PowerShell/NoCloud/hostname plugin EXEs, and `dist\SHA256SUMS`. MSI
 installs only the agent; plugins require separate reviewed installation and
 explicit enablement. MSI versions must be `MAJOR.MINOR.PATCH`; Windows Installer limits those fields to 255, 255, and 65535 respectively.
 
@@ -22,3 +22,11 @@ msiexec.exe /x .\dist\wininit-windows-amd64.msi /qn /norestart /l*v .\wininit-un
 The MSI installs the executable in `Program Files\WinInit`, installs and starts the `wininit` service through native MSI service tables, and creates `ProgramData\WinInit`. It owns the `HKLM\SOFTWARE\Wininit\Installation` marker used by the CLI to prevent direct SCM commands from conflicting with Windows Installer. Major upgrades retain the stable UpgradeCode and component GUIDs, stop the old service, replace the executable, and restart it. The default configuration is installed only when absent and is a permanent component, so upgrades and ordinary uninstall do not destroy administrator changes. Runtime logs, plugins, and Registry lifecycle state are also preserved on uninstall; only the MSI-owned `Installation` marker subkey is removed.
 
 To intentionally purge data after uninstall, an administrator must remove `C:\ProgramData\WinInit` and `HKLM\SOFTWARE\WinInit`. Review these locations before deletion; the MSI deliberately has no purge custom action.
+
+## Metadata process SDK
+
+NoCloud and hostname have optional separate EXEs alongside ConfigDrive and
+PowerShell. MSI installs only the agent; release/checksum artifacts include all
+five EXEs and the MSI. Builtin NoCloud/hostname remain compatible defaults, all
+plugins remain disabled by default, and external hostname requires privileged
+approval. See [metadata SDK](../../docs/external-sdk.md) for protocol, privilege, compatibility and test boundaries.

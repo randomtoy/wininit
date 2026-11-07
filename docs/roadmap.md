@@ -94,9 +94,20 @@ ConfigDrive remains the default for existing v1 files. See
 Exit criteria: compatibility policy, checksum/identity verification,
 least-privilege execution, deadlines, cancellation, process cleanup, and secret
 redaction are enforced and tested.
-The separate PowerShell provisioner has its own narrow experimental SDK.
-General external provisioners, stable SDK promises, plugin registries, and
-hostile-code isolation remain future work.
+Named datasource registration now also supports a separate NoCloud EXE.
+Metadata-only provisioner v1 adds Describe/Apply, idempotent semantics and a
+closed outcome enum, with a separate hostname reference EXE. Both modes remain
+explicitly opt-in with compatible builtin defaults. An independent-module
+consumer build and process/native conformance tests cover the SDK boundary.
+See [metadata SDK](external-sdk.md) and ADR 0014. The separate PowerShell
+provisioner retains its one-shot userdata SDK and execution journal.
+Stable Go API promises, arbitrary host registrations, plugin registries,
+secret-bearing generic provisioning and hostile-code isolation remain future work.
+
+The [2026-11-07 SDK guest run](../tests/e2e/2026-11-07-metadata-sdk.md) verifies
+LocalSystem NoCloud/hostname EXEs, unchanged-name reconciliation, service
+restart, negative pins, disablement and native role/cancellation boundaries
+on Server 2025 without reboot. The broader matrix remains pending.
 
 ## 7. End-to-end matrix and release hardening
 

@@ -27,6 +27,14 @@ ldflags="-s -w -buildid= -X=github.com/randomtoy/wininit/internal/version.Versio
         -trimpath -buildvcs=true -ldflags "$ldflags" \
         -o "$dist_dir/wininit-plugin-powershell-windows-amd64.exe" \
         ./cmd/wininit-plugin-powershell
+    CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build \
+        -trimpath -buildvcs=true -ldflags "$ldflags" \
+        -o "$dist_dir/wininit-plugin-nocloud-windows-amd64.exe" \
+        ./cmd/wininit-plugin-nocloud
+    CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build \
+        -trimpath -buildvcs=true -ldflags "$ldflags" \
+        -o "$dist_dir/wininit-plugin-hostname-windows-amd64.exe" \
+        ./cmd/wininit-plugin-hostname
 )
 
 printf 'Built %s\n' "$dist_dir/wininit-windows-amd64.exe"

@@ -8,3 +8,19 @@ case "$dependencies" in
         exit 1
         ;;
 esac
+for package in plugins/datasource/nocloudprocess plugins/provisioner/hostnameprocess; do
+    case "$dependencies" in
+        *github.com/randomtoy/wininit/$package*)
+            printf '%s\n' "External implementation $package is compiled into the agent." >&2
+            exit 1
+            ;;
+    esac
+done
+# The SDK must be consumable without access to the agent's internal packages.
+sdk_dependencies=$(go list -deps ./sdk/datasource/v1 ./sdk/provisioner/v1 ./sdk/userdata/v1)
+case "$sdk_dependencies" in
+    *github.com/randomtoy/wininit/internal/*)
+        printf '%s\n' 'The public SDK must not import host internals.' >&2
+        exit 1
+        ;;
+esac

@@ -66,3 +66,11 @@ repository and checksum manifest; MSI does not install it automatically.
 [PowerShell guest acceptance](../tests/e2e/2026-11-06-powershell-user-data.md)
 records one real administrator reboot/resume separately from the pending
 media-discovery and hostname-rename matrix.
+
+## Metadata process SDK
+
+NoCloud and hostname have optional separate EXEs alongside ConfigDrive and
+PowerShell. MSI installs only the agent; release/checksum artifacts include all
+five EXEs and the MSI. Builtin NoCloud/hostname remain compatible defaults, all
+plugins remain disabled by default, and external hostname requires privileged
+approval. See [metadata SDK](external-sdk.md) for protocol, privilege, compatibility and test boundaries.

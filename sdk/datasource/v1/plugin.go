@@ -1,9 +1,11 @@
-// Package datasourcev1 is the experimental v1 SDK for ConfigDrive processes.
+// Package datasourcev1 is the experimental v1 SDK for metadata datasource processes.
 // It is independent of wininit's internal lifecycle and state store.
 package datasourcev1
 
 import (
 	"context"
+	"errors"
+	"regexp"
 	"time"
 
 	"github.com/hashicorp/go-hclog"
@@ -30,10 +32,11 @@ type Provider interface {
 type GRPCPlugin struct {
 	goplugin.NetRPCUnsupportedPlugin
 	Provider Provider
+	Name     string
 }
 
 func (p *GRPCPlugin) GRPCServer(_ *goplugin.GRPCBroker, server *grpc.Server) error {
-	RegisterDatasourceServer(server, &providerServer{provider: p.Provider})
+	RegisterDatasourceServer(server, &providerServer{provider: p.Provider, name: p.Name})
 	return nil
 }
 func (*GRPCPlugin) GRPCClient(_ context.Context, _ *goplugin.GRPCBroker, connection *grpc.ClientConn) (interface{}, error) {
@@ -43,10 +46,11 @@ func (*GRPCPlugin) GRPCClient(_ context.Context, _ *goplugin.GRPCBroker, connect
 type providerServer struct {
 	UnimplementedDatasourceServer
 	provider Provider
+	name     string
 }
 
-func (*providerServer) Describe(context.Context, *DescribeRequest) (*Identity, error) {
-	return &Identity{ProtocolVersion: ProtocolVersion, Name: PluginKey, Kind: "datasource"}, nil
+func (s *providerServer) Describe(context.Context, *DescribeRequest) (*Identity, error) {
+	return &Identity{ProtocolVersion: ProtocolVersion, Name: s.pluginName(), Kind: "datasource"}, nil
 }
 func (s *providerServer) Discover(ctx context.Context, request *DiscoverRequest) (*DiscoverResponse, error) {
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
@@ -64,10 +68,25 @@ func (s *providerServer) Discover(ctx context.Context, request *DiscoverRequest)
 	return result, nil
 }
 
-func Serve(provider Provider) {
+func (s *providerServer) pluginName() string {
+	if s.name == "" {
+		return PluginKey
+	}
+	return s.name
+}
+
+// Serve retains the original ConfigDrive v1 entry point.
+func Serve(provider Provider) { _ = ServeNamed(PluginKey, provider) }
+
+// ServeNamed serves one explicitly named metadata datasource. It does not load
+// or discover executables. Host identity and binary trust are checked separately.
+func ServeNamed(name string, provider Provider) error {
+	if !regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`).MatchString(name) || provider == nil {
+		return errors.New("invalid datasource identity or provider")
+	}
 	goplugin.Serve(&goplugin.ServeConfig{
 		HandshakeConfig: Handshake(),
-		Plugins:         goplugin.PluginSet{PluginKey: &GRPCPlugin{Provider: provider}},
+		Plugins:         goplugin.PluginSet{name: &GRPCPlugin{Provider: provider, Name: name}},
 		GRPCServer: func(options []grpc.ServerOption) *grpc.Server {
 			// go-plugin uses persistent broker/control streams on this connection.
 			options = append(options, grpc.MaxRecvMsgSize(MaxMessageBytes), grpc.MaxSendMsgSize(MaxMessageBytes), grpc.MaxConcurrentStreams(16))
@@ -75,4 +94,5 @@ func Serve(provider Provider) {
 		},
 		Logger: hclog.NewNullLogger(),
 	})
+	return nil
 }

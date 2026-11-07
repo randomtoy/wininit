@@ -14,7 +14,7 @@ import (
 // group. Production Windows credential restrictions are tested natively.
 type processControl struct{}
 
-func prepareProcessProfile(ctx context.Context, cmd *exec.Cmd, _ bool) (*processControl, error) {
+func prepareProcessProfile(ctx context.Context, cmd *exec.Cmd, _ processRole) (*processControl, error) {
 	return prepareProcess(ctx, cmd)
 }
 

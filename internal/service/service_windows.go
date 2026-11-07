@@ -179,7 +179,11 @@ func stopAndWait(ctx context.Context, service *mgr.Service) error {
 	return waitForState(ctx, service, svc.Stopped)
 }
 
-func waitForState(ctx context.Context, service *mgr.Service, wanted svc.State) error {
+type statusQuerier interface {
+	Query() (svc.Status, error)
+}
+
+func waitForState(ctx context.Context, service statusQuerier, wanted svc.State) error {
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
 	for {
@@ -189,6 +193,9 @@ func waitForState(ctx context.Context, service *mgr.Service, wanted svc.State) e
 		}
 		if status.State == wanted {
 			return nil
+		}
+		if wanted == svc.Running && status.State == svc.Stopped {
+			return fmt.Errorf("service stopped before reaching running state (Windows exit code %d, service exit code %d)", status.Win32ExitCode, status.ServiceSpecificExitCode)
 		}
 		select {
 		case <-ctx.Done():

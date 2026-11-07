@@ -16,7 +16,7 @@ import (
 	"github.com/randomtoy/wininit/internal/plugin"
 )
 
-var fixtureBinary, configDriveBinary, powerShellBinary string
+var fixtureBinary, configDriveBinary, powerShellBinary, noCloudBinary, hostnameBinary string
 
 func TestMain(m *testing.M) {
 	directory, err := os.MkdirTemp("", "wininit-plugin-test-")
@@ -29,7 +29,9 @@ func TestMain(m *testing.M) {
 	}
 	fixtureBinary, configDriveBinary = filepath.Join(directory, "fixture"+suffix), filepath.Join(directory, "configdrive"+suffix)
 	powerShellBinary = filepath.Join(directory, "powershell"+suffix)
-	for _, build := range []struct{ path, source string }{{fixtureBinary, "./tests/fixtures/pluginprocess"}, {configDriveBinary, "./cmd/wininit-plugin-configdrive"}, {powerShellBinary, "./cmd/wininit-plugin-powershell"}} {
+	noCloudBinary = filepath.Join(directory, "nocloud"+suffix)
+	hostnameBinary = filepath.Join(directory, "hostname"+suffix)
+	for _, build := range []struct{ path, source string }{{fixtureBinary, "./tests/fixtures/pluginprocess"}, {configDriveBinary, "./cmd/wininit-plugin-configdrive"}, {powerShellBinary, "./cmd/wininit-plugin-powershell"}, {noCloudBinary, "./cmd/wininit-plugin-nocloud"}, {hostnameBinary, "./cmd/wininit-plugin-hostname"}} {
 		cmd := exec.Command("go", "build", "-o", build.path, build.source)
 		cmd.Dir = filepath.Join("..", "..")
 		if data, err := cmd.CombinedOutput(); err != nil {
@@ -51,6 +53,12 @@ func processSettings(t *testing.T, mode string) Settings {
 	source := fixtureBinary
 	if mode == "configdrive" {
 		source = configDriveBinary
+	}
+	if mode == "nocloud" {
+		source = noCloudBinary
+	}
+	if mode == "hostname" {
+		source = hostnameBinary
 	}
 	if mode == "powershell" {
 		source = powerShellBinary

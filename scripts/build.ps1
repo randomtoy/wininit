@@ -45,6 +45,12 @@ try {
     $powerShellOutput = Join-Path $DistDirectory 'wininit-plugin-powershell-windows-amd64.exe'
     & go build -trimpath -buildvcs=true -ldflags $ldflags -o $powerShellOutput ./cmd/wininit-plugin-powershell
     if ($LASTEXITCODE -ne 0) { throw "PowerShell plugin build failed with exit code $LASTEXITCODE" }
+    $nocloudOutput = Join-Path $DistDirectory 'wininit-plugin-nocloud-windows-amd64.exe'
+    & go build -trimpath -buildvcs=true -ldflags $ldflags -o $nocloudOutput ./cmd/wininit-plugin-nocloud
+    if ($LASTEXITCODE -ne 0) { throw "nocloud plugin build failed with exit code $LASTEXITCODE" }
+    $hostnameOutput = Join-Path $DistDirectory 'wininit-plugin-hostname-windows-amd64.exe'
+    & go build -trimpath -buildvcs=true -ldflags $ldflags -o $hostnameOutput ./cmd/wininit-plugin-hostname
+    if ($LASTEXITCODE -ne 0) { throw "hostname plugin build failed with exit code $LASTEXITCODE" }
 }
 finally {
     $env:GOOS = $previousGOOS

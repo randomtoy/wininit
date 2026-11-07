@@ -259,3 +259,32 @@ func TestPowerShellRequiresIndependentAuthorizationAndRedactsExecutionID(t *test
 		t.Fatal("privileged execution accepted without explicit authorization and pins")
 	}
 }
+
+func TestExternalNoCloudAndHostnameAreExplicitlyOptIn(t *testing.T) {
+	cfg := Default()
+	if cfg.Plugins.Datasources.NoCloud.Enabled || cfg.Plugins.Datasources.NoCloud.Execution != "builtin" || cfg.Plugins.Provisioners.Hostname.Enabled || cfg.Plugins.Provisioners.Hostname.Execution != "builtin" || cfg.Plugins.Provisioners.Hostname.AllowPrivileged {
+		t.Fatal("unsafe process plugin defaults")
+	}
+	cfg.Plugins.Datasources.NoCloud.Execution = "external"
+	cfg.Plugins.Datasources.NoCloud.Process.Executable = "invalid"
+	cfg.Plugins.Provisioners.Hostname.Execution = "external"
+	cfg.Plugins.Provisioners.Hostname.Process.Executable = "invalid"
+	if err := cfg.Validate(); err != nil {
+		t.Fatal("disabled plugin inspected process settings", err)
+	}
+	cfg.Plugins.Datasources.NoCloud.Enabled = true
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("enabled external NoCloud accepted invalid process settings")
+	}
+	cfg.Plugins.Datasources.NoCloud.Enabled = false
+	cfg.Plugins.Provisioners.Hostname.Enabled = true
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("external hostname accepted missing privileged approval and image pin")
+	}
+	cfg.Plugins.Provisioners.Hostname.Enabled = false
+	cfg.Plugins.Datasources.NoCloud.Execution = "unknown"
+	cfg.Plugins.Datasources.NoCloud.Enabled = true
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("unknown execution mode accepted")
+	}
+}

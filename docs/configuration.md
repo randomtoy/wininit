@@ -29,6 +29,11 @@ plugins:
       enabled: false
       seed_directory: ''
       discover_volumes: true
+      execution: builtin
+      process:
+        executable: ''
+        sha256: ''
+        timeout_seconds: 15
     configdrive:
       enabled: false
       seed_directory: ''
@@ -41,6 +46,12 @@ plugins:
   provisioners:
     hostname:
       enabled: false
+      execution: builtin
+      allow_privileged: false
+      process:
+        executable: ''
+        sha256: ''
+        timeout_seconds: 30
     password_policy:
       enabled: false
       minimum_length: 14
@@ -56,6 +67,16 @@ plugins:
     authorized_keys:
       enabled: false
       users: []
+    powershell_user_data:
+      enabled: false
+      allow_privileged: false
+      execution_id: ''
+      script_sha256: ''
+      max_output_bytes: 65536
+      process:
+        executable: ''
+        sha256: ''
+        timeout_seconds: 120
 reboot:
   policy: never
 ```
@@ -69,7 +90,9 @@ The complete serialized schema is:
 | `log.directory` | No | Location for service logs under ProgramData. |
 | `state.registry_path` | No | Non-empty HKLM subkey below `SOFTWARE\`, dedicated to wininit state. |
 | `plugins.directory` | No | Reserved future plugin path; setting it does not enable plugins. |
-| `plugins.datasources.nocloud.enabled` | No | Opts into the built-in NoCloud datasource; defaults to `false`. |
+| `plugins.datasources.nocloud.enabled` | No | Opts into the NoCloud datasource; defaults to `false`. |
+| `plugins.datasources.nocloud.execution` | No | Compatible `builtin` default or explicit `external`. |
+| `plugins.datasources.nocloud.process` | External mode | Absolute EXE, SHA-256 and timeout 1–60 seconds (default 15). |
 | `plugins.datasources.nocloud.seed_directory` | No | Explicit seed directory; defaults to empty. |
 | `plugins.datasources.nocloud.discover_volumes` | No | Permits mounted `CIDATA` ISO9660/FAT discovery; defaults to `true`. |
 | `plugins.datasources.configdrive.enabled` | No | Opts into OpenStack ConfigDrive; defaults to `false`. |
@@ -78,6 +101,9 @@ The complete serialized schema is:
 | `plugins.datasources.configdrive.execution` | No | `builtin` (compatible default) or explicit `external` process. |
 | `plugins.datasources.configdrive.process` | External mode | Absolute `executable`, exact `sha256`, and `timeout_seconds` 1–60 (default 15). |
 | `plugins.provisioners.hostname.enabled` | No | Opts into hostname mutation; defaults to `false`. |
+| `plugins.provisioners.hostname.execution` | No | Compatible `builtin` default or explicit `external`. |
+| `plugins.provisioners.hostname.allow_privileged` | External mode | Explicit approval of elevated EXE execution; defaults to false. |
+| `plugins.provisioners.hostname.process` | External mode | Absolute EXE, SHA-256 and timeout 1–60 seconds (default 30). |
 | `plugins.provisioners.password_policy` | No | Separate `enabled: false` plus bounded SAM password/lockout fields shown above. |
 | `plugins.provisioners.local_users` | No | Separate `enabled: false` and `users` entries: `name`, `full_name`, `description`, `password_file`, `password_never_expires`. |
 | `plugins.provisioners.authorized_keys` | No | Separate `enabled: false` and `users` entries: `name` and `public_keys`. Empty keys revoke the managed block. |
@@ -153,3 +179,5 @@ Future sensitive values must not be
 written to lifecycle state, normal logs, status output, or diagnostic archives.
 Configuration sanitization must default to removal rather than relying only on
 field-name pattern matching.
+
+NoCloud and hostname also support separate EXEs; see [metadata SDK and process configuration](external-sdk.md). Older files retain builtin modes and all omitted plugins remain disabled.

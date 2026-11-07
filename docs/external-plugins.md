@@ -1,4 +1,8 @@
-# External ConfigDrive plugin
+# External process plugins
+
+This page details the original ConfigDrive role. Named datasource registration,
+separate NoCloud/hostname EXEs and provisioner v1 are described in the
+[metadata SDK](external-sdk.md). PowerShell retains its separate userdata API.
 
 The first process plugin is ConfigDrive, built as
 `wininit-plugin-configdrive-windows-amd64.exe`. It uses HashiCorp `go-plugin`
@@ -27,7 +31,7 @@ updates are not implemented.
 
 ## Build and configuration
 
-`make build` and `scripts/build.ps1` build both agent and plugin. The MSI
+`make build` and `scripts/build.ps1` build the agent and all separate plugins. The MSI
 installs the agent; the plugin is a separate release EXE with an entry in
 `SHA256SUMS`. Install a reviewed copy in a dedicated administrator-controlled
 directory, for example `C:\Program Files\WinInit\plugins`. Do not use a writable
@@ -66,8 +70,10 @@ administrator membership alone does not satisfy the explicit owner check.
 For a new dedicated plugin directory and reviewed image:
 
 ```powershell
-icacls.exe 'C:\Program Files\WinInit\plugins' /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)(F)' '*S-1-5-32-544:(OI)(CI)(F)' '*S-1-5-32-545:(OI)(CI)(RX)' /setowner '*S-1-5-32-544'
-icacls.exe 'C:\Program Files\WinInit\plugins\wininit-plugin-configdrive.exe' /inheritance:r /grant:r '*S-1-5-18:(F)' '*S-1-5-32-544:(F)' '*S-1-5-32-545:(RX)' /setowner '*S-1-5-32-544'
+icacls.exe 'C:\Program Files\WinInit\plugins' /setowner '*S-1-5-32-544'
+icacls.exe 'C:\Program Files\WinInit\plugins' /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)(F)' '*S-1-5-32-544:(OI)(CI)(F)' '*S-1-5-32-545:(OI)(CI)(RX)'
+icacls.exe 'C:\Program Files\WinInit\plugins\wininit-plugin-configdrive.exe' /setowner '*S-1-5-32-544'
+icacls.exe 'C:\Program Files\WinInit\plugins\wininit-plugin-configdrive.exe' /inheritance:r /grant:r '*S-1-5-18:(F)' '*S-1-5-32-544:(F)' '*S-1-5-32-545:(RX)'
 ```
 
 Remove any pre-existing explicit write grants to other principals. DOS-device,
@@ -93,15 +99,17 @@ local hostname, never Registry handles, password paths, key lists, user-data,
 or provisioning requests. Responses are bounded to 128 KiB and revalidated by
 the host. Unknown versions fail closed. Within v1, compatible changes may add
 optional fields; changed meanings or required behavior need a new protocol
-version. The SDK is experimental and only ConfigDrive datasource processes
-are supported. Provisioner processes and a general external SDK remain future
-work.
+version. The SDK remains experimental. Named NoCloud datasource and metadata-only
+provisioner processes are now supported through explicit host configuration;
+see [metadata SDK](external-sdk.md). Arbitrary plugin registration remains future work.
 
 The configured 1–60 second deadline covers startup, identity negotiation,
 discovery, and RPCs, including framework calls. Cancellation kills the process.
 The host owns this deadline and propagates RPC cancellation rather than a
 second rounded remote timeout. The SDK additionally caps provider calls at
 60 seconds. A provider's early deadline error remains a discovery failure.
+A private datasource session timeout has a distinct cause; a concurrent root
+deadline cannot turn it into clean lifecycle cancellation or erase failed state.
 Each discovery starts a fresh process and cleanup runs on success and failure;
 the agent does not keep a plugin daemon or retry automatically. Plugin stdout,
 stderr, and remote error text are discarded or mapped to fixed host errors,

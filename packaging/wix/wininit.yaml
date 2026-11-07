@@ -11,6 +11,11 @@ plugins:
       enabled: false
       seed_directory: ''
       discover_volumes: true
+      execution: builtin
+      process:
+        executable: ''
+        sha256: ''
+        timeout_seconds: 15
     configdrive:
       enabled: false
       seed_directory: ''
@@ -23,6 +28,12 @@ plugins:
   provisioners:
     hostname:
       enabled: false
+      execution: builtin
+      allow_privileged: false
+      process:
+        executable: ''
+        sha256: ''
+        timeout_seconds: 30
     password_policy:
       enabled: false
       minimum_length: 14

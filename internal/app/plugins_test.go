@@ -112,3 +112,21 @@ func TestConfigDriveIsIndependentlyEnabledAndReported(t *testing.T) {
 		}
 	}
 }
+
+func TestExternalNoCloudAndHostnameConstructionRetainsDisablement(t *testing.T) {
+	cfg := config.Default()
+	cfg.Plugins.Datasources.NoCloud.Execution = "external"
+	cfg.Plugins.Provisioners.Hostname.Execution = "external"
+	catalog := configuredPlugins(cfg)
+	if _, ok := catalog.Datasources[0].Plugin.(*pluginprocess.Datasource); !ok {
+		t.Fatal("NoCloud retained builtin implementation")
+	}
+	if _, ok := catalog.Provisioners[3].Plugin.(*pluginprocess.Provisioner); !ok {
+		t.Fatal("hostname retained builtin implementation")
+	}
+	for _, entry := range catalog.Descriptors() {
+		if entry.Enabled || entry.Status != "disabled" {
+			t.Fatal("external mode bypassed enablement")
+		}
+	}
+}

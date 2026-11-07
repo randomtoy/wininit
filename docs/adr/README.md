@@ -19,6 +19,7 @@ direction and is not a compatibility promise.
 | [0011](0011-local-identity-access.md) | Accepted | Opt-in local users, password policy, and SSH key management |
 | [0012](0012-process-configdrive.md) | Accepted | Optional verified ConfigDrive process and experimental SDK |
 | [0013](0013-powershell-user-data.md) | Accepted | Separate hash-approved PowerShell process and durable one-shot execution |
+| [0014](0014-metadata-process-sdk.md) | Accepted | Metadata process SDK and separate NoCloud/hostname executables |
 
 ## Template
 
