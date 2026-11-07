@@ -473,6 +473,8 @@ precondition outside wininit; do not imply the plugin manages groups or sshd.
   unbounded wait for a transient running state.
   Wait on the owned msiexec client with a deadline, not Start-Process's process
   tree (installed services are long lived); never terminate msiexec by name.
+  Quote only whitespace-containing MSI argument values, not command switches
+  or REBOOT properties; exercise the actual log path containing spaces in CI.
 - Keep structured startup milestones around lock acquisition and the first
   Registry checkpoint so SCM-running/engine-starting failures are diagnosable.
 - Release jobs run only for trusted version tags and prepare draft prereleases.

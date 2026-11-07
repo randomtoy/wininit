@@ -59,12 +59,14 @@ function Get-MsiProperty {
 function Invoke-MsiExec {
     param([Parameter(Mandatory)][string[]]$Arguments)
 
-    # Start-Process joins its argument array without quoting. MSI and log paths
-    # routinely contain spaces, so quote every argument explicitly.
+    # Start-Process joins its argument array without quoting. Quote values with
+    # whitespace, leaving MSI switches/properties bare for its command parser.
     foreach ($argument in $Arguments) {
         if ($argument.Contains('"') -or $argument.EndsWith('\')) { throw 'Unsafe MSI argument.' }
     }
-    $quoted = ($Arguments | ForEach-Object { '"' + $_ + '"' }) -join ' '
+    $quoted = ($Arguments | ForEach-Object {
+        if ($_ -match '\s') { '"' + $_ + '"' } else { $_ }
+    }) -join ' '
     Write-Host "MSI begin: $([IO.Path]::GetFileName($Arguments[-1]))"
     # Start-Process -Wait waits for a process tree on Windows. Wait for the
     # specific client instead; installed automatic services are long lived.
