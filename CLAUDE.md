@@ -571,3 +571,9 @@ deadline, preserve the datasource failed checkpoint and return an error; never
 classify the independent session limit as root cancellation. The regression
 uses actual named fixture processes and waits only the failed-save response for
 a real root deadline, covering both datasource names.
+
+The PR 6 review follow-up in the SDK acceptance record verifies the distinct
+datasource-timeout cause on the same Server 2025 guest, alongside another
+LocalSystem normal/negative/disabled service pipeline run. The deadline timing
+regression uses memory checkpoints; the separate service acceptance uses real
+Registry storage. Preserve that distinction and the no-reboot/cleanup evidence.

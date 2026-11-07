@@ -87,3 +87,36 @@ Server 2025 guest. It does not validate Server 2022, attached media, real hostna
 rename/reboot/resume, domain rename, hostile-code isolation or MSI on this VM.
 Windows/MSI CI remains separate evidence. The independent external-module SDK
 consumer build runs in local/CI tests, not on this guest.
+
+## PR 6 review follow-up
+
+Review candidate `68ce9aa1d7fe78142af96170fbfc5277d7016b0e` fixes a private
+datasource timeout being mistaken for a later root lifecycle deadline. Before
+the fix, a portable regression launched real named ConfigDrive/NoCloud fixture
+processes, held the failed-save response until the real root deadline and
+observed a nil engine error with lost failure evidence. With distinct private
+timeout causes, both named cases return an error and preserve failed phase,
+plugin status and LastError. The checkpoint timing wrapper uses the memory
+store; it is not a claim of an actual slow Registry device.
+
+The same regression passed natively on this guest (8.40 seconds for both
+sources). Synchronized provisioner cancellation, real NoCloud, unchanged-name
+hostname reconciliation and actual declarative token/job checks passed again.
+The TestMain-only overlay located cross-built images, as in the earlier run.
+
+The LocalSystem service procedure also passed again with the review candidate:
+external NoCloud/hostname completion, increased attempt count after service
+restart, bad-pin failure before hostname, prompt failed-start CLI return,
+disabled/missing-image behavior and marker redaction. That procedure uses real
+Registry checkpoints. Verified review artifact hashes:
+
+| Artifact | SHA-256 |
+| --- | --- |
+| Agent | `ed57978d1549bd375c02c0437f0c50c407ab957101bd24a2f88e8a5bf1b1900b` |
+| NoCloud EXE | `99379b8b082f769eda9e2d051f1f0830a8be801a95e5e75e2fcb4de79396f25e` |
+| Hostname EXE | `b688caacf2520a9f31472509e848ef8d10d3367cb869e4ee88cc2302455f1590` |
+
+The review service, default configuration, isolated Registry key and review
+files were removed. A fresh SSH command confirmed absence and unchanged active /
+configured hostname and boot timestamp `2026-11-06T14:37:06.1947340Z`. No reboot,
+rename, identity/password or SSH configuration change was performed.
