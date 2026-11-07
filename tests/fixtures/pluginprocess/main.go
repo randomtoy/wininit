@@ -20,10 +20,14 @@ import (
 type fixture struct {
 	datasourcev1.UnimplementedDatasourceServer
 	mode string
+	name string
 }
 
 func (f *fixture) Describe(context.Context, *datasourcev1.DescribeRequest) (*datasourcev1.Identity, error) {
-	name := datasourcev1.PluginKey
+	name := f.name
+	if name == "" {
+		name = datasourcev1.PluginKey
+	}
 	if f.mode == "identity" {
 		name = "wrong"
 	}
@@ -99,9 +103,14 @@ func main() {
 		time.Sleep(time.Hour)
 		return
 	}
+	name := datasourcev1.PluginKey
+	if strings.HasPrefix(mode, "nc-") {
+		name = "nocloud"
+		mode = strings.TrimPrefix(mode, "nc-")
+	}
 	handshake := datasourcev1.Handshake()
 	if mode == "version" {
 		handshake.ProtocolVersion = 99
 	}
-	goplugin.Serve(&goplugin.ServeConfig{HandshakeConfig: handshake, Plugins: goplugin.PluginSet{datasourcev1.PluginKey: &fixturePlugin{server: &fixture{mode: mode}}}, GRPCServer: goplugin.DefaultGRPCServer, Logger: hclog.NewNullLogger()})
+	goplugin.Serve(&goplugin.ServeConfig{HandshakeConfig: handshake, Plugins: goplugin.PluginSet{name: &fixturePlugin{server: &fixture{mode: mode, name: name}}}, GRPCServer: goplugin.DefaultGRPCServer, Logger: hclog.NewNullLogger()})
 }

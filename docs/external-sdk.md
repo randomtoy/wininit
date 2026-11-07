@@ -98,8 +98,10 @@ retryable contract. The host owns checkpointing and the machine-wide lock.
 
 The whole session (image verification, startup, Describe and Apply) has a
 configured 1–60 second deadline. SDK provider calls also have a 60-second upper
-bound. Private host session deadlines remain errors even if the root lifecycle
-is stopped concurrently. Each call starts a fresh process, uses local mTLS and
+bound. Private host session deadlines for both datasources and provisioners remain
+errors even if the root lifecycle deadline expires concurrently. Successful
+root cancellation retains its normal cancellation error; a datasource timeout
+retains failed status and error evidence instead of resetting it to pending. Each call starts a fresh process, uses local mTLS and
 128 KiB message limits, discards stdout/stderr, maps remote errors to fixed
 status codes, and closes its process/job on every exit path. There is no retry
 loop or persistent plugin daemon.

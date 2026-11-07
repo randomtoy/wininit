@@ -564,3 +564,10 @@ reconciliation, real service restart, negative pins and disablement. Hostname
 and OS boot time remained unchanged; no reboot was authorized or performed.
 The test-owned service/configuration/Registry/files were cleaned. This was a
 development CLI deployment, not guest MSI or Server 2022 acceptance.
+
+PR 6 review: external NoCloud/ConfigDrive use a distinct private timeout cause,
+like hostname and PowerShell. When terminal persistence overlaps the real root
+deadline, preserve the datasource failed checkpoint and return an error; never
+classify the independent session limit as root cancellation. The regression
+uses actual named fixture processes and waits only the failed-save response for
+a real root deadline, covering both datasource names.

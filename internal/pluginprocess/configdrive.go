@@ -41,6 +41,16 @@ func (s Settings) Validate() error {
 	return nil
 }
 
+// The session's private timer must not become the root lifecycle's deadline.
+var errDatasourceTimeout = errors.New("external datasource session deadline exceeded")
+
+func datasourceContextError(ctx context.Context) error {
+	if errors.Is(context.Cause(ctx), errDatasourceTimeout) {
+		return errDatasourceTimeout
+	}
+	return ctx.Err()
+}
+
 type Datasource struct {
 	name      string
 	settings  Settings
@@ -73,7 +83,7 @@ func (p *Datasource) Discover(parent context.Context) (plugin.Metadata, error) {
 	if err := p.settings.Validate(); err != nil {
 		return plugin.Metadata{}, err
 	}
-	ctx, cancel := context.WithTimeout(parent, time.Duration(p.settings.TimeoutSeconds)*time.Second)
+	ctx, cancel := context.WithTimeoutCause(parent, time.Duration(p.settings.TimeoutSeconds)*time.Second, errDatasourceTimeout)
 	defer cancel()
 	executable, err := openExecutable(p.settings.Executable)
 	if err != nil {
@@ -93,7 +103,7 @@ func (p *Datasource) Discover(parent context.Context) (plugin.Metadata, error) {
 		return plugin.Metadata{}, fmt.Errorf("external %s SHA-256 mismatch", p.label())
 	}
 	if err := ctx.Err(); err != nil {
-		return plugin.Metadata{}, err
+		return plugin.Metadata{}, datasourceContextError(ctx)
 	}
 	var process *processRunner
 	var startupFailure error
@@ -141,7 +151,7 @@ func (p *Datasource) Discover(parent context.Context) (plugin.Metadata, error) {
 	connection, err := client.Client()
 	if err != nil {
 		if ctx.Err() != nil && (startupCancelled || process != nil && (process.cancelled.Load() || process.startCancelled)) {
-			return plugin.Metadata{}, ctx.Err()
+			return plugin.Metadata{}, datasourceContextError(ctx)
 		}
 		if startupFailure != nil {
 			return plugin.Metadata{}, startupFailure
@@ -165,7 +175,7 @@ func (p *Datasource) Discover(parent context.Context) (plugin.Metadata, error) {
 	raw, err := connection.Dispense(p.name)
 	if err != nil {
 		if cancelledRPC(ctx, process, err) {
-			return plugin.Metadata{}, ctx.Err()
+			return plugin.Metadata{}, datasourceContextError(ctx)
 		}
 		return plugin.Metadata{}, fmt.Errorf("external %s interface negotiation failed", p.label())
 	}
@@ -176,7 +186,7 @@ func (p *Datasource) Discover(parent context.Context) (plugin.Metadata, error) {
 	description, err := rpc.Describe(ctx, &datasourcev1.DescribeRequest{})
 	if err != nil {
 		if cancelledRPC(ctx, process, err) {
-			return plugin.Metadata{}, ctx.Err()
+			return plugin.Metadata{}, datasourceContextError(ctx)
 		}
 		return plugin.Metadata{}, fmt.Errorf("external %s identity negotiation failed", p.label())
 	}
@@ -186,7 +196,7 @@ func (p *Datasource) Discover(parent context.Context) (plugin.Metadata, error) {
 	response, err := rpc.Discover(ctx, &datasourcev1.DiscoverRequest{SeedDirectory: p.directory, DiscoverVolumes: p.discover})
 	if err != nil {
 		if cancelledRPC(ctx, process, err) {
-			return plugin.Metadata{}, ctx.Err()
+			return plugin.Metadata{}, datasourceContextError(ctx)
 		}
 		return plugin.Metadata{}, fmt.Errorf("external %s discovery failed (RPC code %s)", p.label(), status.Code(err))
 	}
