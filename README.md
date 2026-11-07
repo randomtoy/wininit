@@ -254,3 +254,7 @@ state, packaging, security, and the definition of done.
 ## License
 
 Licensed under the [Apache License 2.0](LICENSE).
+
+NoCloud and hostname can also use independently distributed EXEs with explicit
+external mode and image pins. All plugins remain disabled by default; external
+hostname additionally requires privileged approval. See the [metadata plugin SDK](docs/external-sdk.md).

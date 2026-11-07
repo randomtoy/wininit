@@ -17,6 +17,14 @@ import (
 	"time"
 )
 
+type processRole uint8
+
+const (
+	roleDatasource processRole = iota
+	rolePowerShell
+	roleProvisioner
+)
+
 type processRunner struct {
 	cmd            *exec.Cmd
 	stdout, stderr io.ReadCloser
@@ -33,10 +41,10 @@ type processRunner struct {
 }
 
 func newProcessRunner(ctx context.Context, cmd *exec.Cmd, directory string) (*processRunner, error) {
-	return newProcessRunnerProfile(ctx, cmd, directory, false, "ConfigDrive")
+	return newProcessRunnerProfile(ctx, cmd, directory, roleDatasource, "ConfigDrive")
 }
-func newProcessRunnerProfile(ctx context.Context, cmd *exec.Cmd, directory string, privileged bool, label string) (*processRunner, error) {
-	control, err := prepareProcessProfile(ctx, cmd, privileged)
+func newProcessRunnerProfile(ctx context.Context, cmd *exec.Cmd, directory string, role processRole, label string) (*processRunner, error) {
+	control, err := prepareProcessProfile(ctx, cmd, role)
 	if err != nil {
 		return nil, err
 	}

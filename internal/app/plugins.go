@@ -26,11 +26,20 @@ func configuredPlugins(cfg config.Config) plugin.Catalog {
 	if drive.Execution == "external" {
 		drivePlugin = pluginprocess.NewConfigDrive(drive.Process, drive.SeedDirectory, drive.DiscoverVolumes)
 	}
+	cloud := cfg.Plugins.Datasources.NoCloud
+	var cloudPlugin plugin.Datasource = nocloud.New(cloud.SeedDirectory, cloud.DiscoverVolumes, nocloud.FindVolumes)
+	if cloud.Execution == "external" {
+		cloudPlugin = pluginprocess.NewNoCloud(cloud.Process, cloud.SeedDirectory, cloud.DiscoverVolumes)
+	}
+	var hostnamePlugin plugin.Provisioner = hostname.New(platformhostname.New())
+	if cfg.Plugins.Provisioners.Hostname.Execution == "external" {
+		hostnamePlugin = pluginprocess.NewHostname(cfg.Plugins.Provisioners.Hostname.ProvisionerSettings)
+	}
 	accounts := platformidentity.New()
 	return plugin.Catalog{
 		Datasources: []plugin.DatasourceRegistration{{
 			Enabled: cfg.Plugins.Datasources.NoCloud.Enabled,
-			Plugin:  nocloud.New(cfg.Plugins.Datasources.NoCloud.SeedDirectory, cfg.Plugins.Datasources.NoCloud.DiscoverVolumes, nocloud.FindVolumes),
+			Plugin:  cloudPlugin,
 		}, {
 			Enabled: cfg.Plugins.Datasources.ConfigDrive.Enabled,
 			Plugin:  drivePlugin,
@@ -39,7 +48,7 @@ func configuredPlugins(cfg config.Config) plugin.Catalog {
 			{Enabled: cfg.Plugins.Provisioners.PasswordPolicy.Enabled, Plugin: passwordpolicy.New(cfg.Plugins.Provisioners.PasswordPolicy.PasswordPolicy, accounts)},
 			{Enabled: cfg.Plugins.Provisioners.LocalUsers.Enabled, Plugin: localusers.New(cfg.Plugins.Provisioners.LocalUsers.Users, accounts)},
 			{Enabled: cfg.Plugins.Provisioners.AuthorizedKeys.Enabled, Plugin: authorizedkeys.New(cfg.Plugins.Provisioners.AuthorizedKeys.Users, accounts)},
-			{Enabled: cfg.Plugins.Provisioners.Hostname.Enabled, Plugin: hostname.New(platformhostname.New())},
+			{Enabled: cfg.Plugins.Provisioners.Hostname.Enabled, Plugin: hostnamePlugin},
 			{Enabled: cfg.Plugins.Provisioners.PowerShellUserData.Enabled, Plugin: pluginprocess.NewPowerShell(cfg.Plugins.Provisioners.PowerShellUserData, map[string]pluginprocess.SourceSettings{
 				"nocloud":     {Directory: cfg.Plugins.Datasources.NoCloud.SeedDirectory, DiscoverVolumes: cfg.Plugins.Datasources.NoCloud.DiscoverVolumes},
 				"configdrive": {Directory: drive.SeedDirectory, DiscoverVolumes: drive.DiscoverVolumes},

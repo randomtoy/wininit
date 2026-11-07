@@ -22,6 +22,9 @@ func TestInstallerDefaultPluginsAreExplicitlyDisabled(t *testing.T) {
 	}
 
 	noCloud := cfg.Plugins.Datasources.NoCloud
+	if noCloud.Execution != "builtin" || noCloud.Process.Executable != "" || noCloud.Process.SHA256 != "" || cfg.Plugins.Provisioners.Hostname.Execution != "builtin" || cfg.Plugins.Provisioners.Hostname.AllowPrivileged || cfg.Plugins.Provisioners.Hostname.Process.Executable != "" || cfg.Plugins.Provisioners.Hostname.Process.SHA256 != "" {
+		t.Fatal("installer enabled an external process or privileged approval")
+	}
 	if noCloud.Enabled {
 		t.Fatal("installer default enabled the NoCloud datasource")
 	}

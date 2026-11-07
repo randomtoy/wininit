@@ -238,3 +238,11 @@ promise.
 
 See the [ADR index](adr/README.md) for the decisions behind state,
 configuration, service hosting, packaging, plugins, and testing.
+
+## Metadata process SDK
+
+NoCloud and hostname have optional separate EXEs alongside ConfigDrive and
+PowerShell. MSI installs only the agent; release/checksum artifacts include all
+five EXEs and the MSI. Builtin NoCloud/hostname remain compatible defaults, all
+plugins remain disabled by default, and external hostname requires privileged
+approval. See [metadata SDK](external-sdk.md) for protocol, privilege, compatibility and test boundaries.

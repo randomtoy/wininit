@@ -1,0 +1,30 @@
+syntax = "proto3";
+package wininit.provisioner.v1;
+option go_package = "github.com/randomtoy/wininit/sdk/provisioner/v1;provisionerv1";
+// Experimental metadata-only idempotent reconciliation, never arbitrary scripts.
+service Provisioner {
+  rpc Describe(DescribeRequest) returns (Identity);
+  rpc Apply(ApplyRequest) returns (ApplyResponse);
+}
+message DescribeRequest {}
+message Identity {
+  uint32 protocol_version = 1;
+  string name = 2;
+  string kind = 3;
+  bool idempotent = 4;
+}
+message Metadata {
+  string instance_id = 1;
+  string local_hostname = 2;
+  string datasource = 3;
+}
+message ApplyRequest { Metadata metadata = 1; }
+enum Outcome {
+  OUTCOME_UNSPECIFIED = 0;
+  UNCHANGED = 1;
+  CHANGED = 2;
+  REBOOT_REQUIRED = 3;
+  CHANGED_REBOOT_REQUIRED = 4;
+  SKIPPED = 5;
+}
+message ApplyResponse { Outcome outcome = 1; }

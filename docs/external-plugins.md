@@ -1,4 +1,8 @@
-# External ConfigDrive plugin
+# External process plugins
+
+This page details the original ConfigDrive role. Named datasource registration,
+separate NoCloud/hostname EXEs and provisioner v1 are described in the
+[metadata SDK](external-sdk.md). PowerShell retains its separate userdata API.
 
 The first process plugin is ConfigDrive, built as
 `wininit-plugin-configdrive-windows-amd64.exe`. It uses HashiCorp `go-plugin`
@@ -27,7 +31,7 @@ updates are not implemented.
 
 ## Build and configuration
 
-`make build` and `scripts/build.ps1` build both agent and plugin. The MSI
+`make build` and `scripts/build.ps1` build the agent and all separate plugins. The MSI
 installs the agent; the plugin is a separate release EXE with an entry in
 `SHA256SUMS`. Install a reviewed copy in a dedicated administrator-controlled
 directory, for example `C:\Program Files\WinInit\plugins`. Do not use a writable
@@ -93,9 +97,9 @@ local hostname, never Registry handles, password paths, key lists, user-data,
 or provisioning requests. Responses are bounded to 128 KiB and revalidated by
 the host. Unknown versions fail closed. Within v1, compatible changes may add
 optional fields; changed meanings or required behavior need a new protocol
-version. The SDK is experimental and only ConfigDrive datasource processes
-are supported. Provisioner processes and a general external SDK remain future
-work.
+version. The SDK remains experimental. Named NoCloud datasource and metadata-only
+provisioner processes are now supported through explicit host configuration;
+see [metadata SDK](external-sdk.md). Arbitrary plugin registration remains future work.
 
 The configured 1–60 second deadline covers startup, identity negotiation,
 discovery, and RPCs, including framework calls. Cancellation kills the process.

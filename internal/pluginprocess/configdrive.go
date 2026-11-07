@@ -19,10 +19,12 @@ import (
 	"github.com/randomtoy/wininit/internal/identity"
 	"github.com/randomtoy/wininit/internal/plugin"
 	"github.com/randomtoy/wininit/plugins/datasource/configdrive"
+	"github.com/randomtoy/wininit/plugins/datasource/nocloud"
 	datasourcev1 "github.com/randomtoy/wininit/sdk/datasource/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"gopkg.in/yaml.v3"
 )
 
 type Settings struct {
@@ -34,23 +36,37 @@ type Settings struct {
 func (s Settings) Validate() error {
 	digest, err := hex.DecodeString(s.SHA256)
 	if !identity.LocalAbsolutePath(s.Executable) || err != nil || len(digest) != sha256.Size || s.TimeoutSeconds < 1 || s.TimeoutSeconds > 60 {
-		return errors.New("external ConfigDrive requires an absolute local executable, exact SHA-256, and timeout_seconds 1..60")
+		return errors.New("external datasource requires an absolute local executable, exact SHA-256, and timeout_seconds 1..60")
 	}
 	return nil
 }
 
-type ConfigDrive struct {
+type Datasource struct {
+	name      string
 	settings  Settings
 	directory string
 	discover  bool
 }
 
 func NewConfigDrive(settings Settings, directory string, discover bool) *ConfigDrive {
-	return &ConfigDrive{settings, directory, discover}
+	return &Datasource{name: "configdrive", settings: settings, directory: directory, discover: discover}
 }
-func (*ConfigDrive) Name() string { return "configdrive" }
 
-func (p *ConfigDrive) Discover(parent context.Context) (plugin.Metadata, error) {
+// ConfigDrive preserves the original public-internal adapter type.
+type ConfigDrive = Datasource
+
+func NewNoCloud(settings Settings, directory string, discover bool) *Datasource {
+	return &Datasource{name: "nocloud", settings: settings, directory: directory, discover: discover}
+}
+func (p *Datasource) Name() string { return p.name }
+func (p *Datasource) label() string {
+	if p.name == "nocloud" {
+		return "NoCloud"
+	}
+	return "ConfigDrive"
+}
+
+func (p *Datasource) Discover(parent context.Context) (plugin.Metadata, error) {
 	if err := parent.Err(); err != nil {
 		return plugin.Metadata{}, err
 	}
@@ -61,20 +77,20 @@ func (p *ConfigDrive) Discover(parent context.Context) (plugin.Metadata, error) 
 	defer cancel()
 	executable, err := openExecutable(p.settings.Executable)
 	if err != nil {
-		return plugin.Metadata{}, errors.New("external ConfigDrive executable security check failed")
+		return plugin.Metadata{}, fmt.Errorf("external %s executable security check failed", p.label())
 	}
 	defer executable.Close() // Windows keeps the verified image locked against write/delete.
 	hash := sha256.New()
 	if _, err := io.Copy(hash, io.LimitReader(executable, (128<<20)+1)); err != nil {
-		return plugin.Metadata{}, errors.New("read external ConfigDrive executable failed")
+		return plugin.Metadata{}, fmt.Errorf("read external %s executable failed", p.label())
 	}
 	info, err := executable.Stat()
 	if err != nil || !info.Mode().IsRegular() || info.Size() > 128<<20 {
-		return plugin.Metadata{}, errors.New("external ConfigDrive executable is not a bounded regular file")
+		return plugin.Metadata{}, fmt.Errorf("external %s executable is not a bounded regular file", p.label())
 	}
 	digest, _ := hex.DecodeString(p.settings.SHA256)
 	if subtle.ConstantTimeCompare(hash.Sum(nil), digest) != 1 {
-		return plugin.Metadata{}, errors.New("external ConfigDrive SHA-256 mismatch")
+		return plugin.Metadata{}, fmt.Errorf("external %s SHA-256 mismatch", p.label())
 	}
 	if err := ctx.Err(); err != nil {
 		return plugin.Metadata{}, err
@@ -84,7 +100,7 @@ func (p *ConfigDrive) Discover(parent context.Context) (plugin.Metadata, error) 
 	startupCancelled := false
 	client := goplugin.NewClient(&goplugin.ClientConfig{
 		HandshakeConfig:  datasourcev1.Handshake(),
-		Plugins:          goplugin.PluginSet{datasourcev1.PluginKey: &datasourcev1.GRPCPlugin{}},
+		Plugins:          goplugin.PluginSet{p.name: &datasourcev1.GRPCPlugin{}},
 		AllowedProtocols: []goplugin.Protocol{goplugin.ProtocolGRPC},
 		AutoMTLS:         true, SkipHostEnv: true, StartTimeout: time.Until(deadline(ctx)),
 		GRPCDialOptions: []grpc.DialOption{
@@ -113,10 +129,10 @@ func (p *ConfigDrive) Discover(parent context.Context) (plugin.Metadata, error) 
 			cmd := exec.CommandContext(ctx, p.settings.Executable)
 			cmd.Env = append(environment(), spec.Env...)
 			var err error
-			process, err = newProcessRunner(ctx, cmd, directory)
+			process, err = newProcessRunnerProfile(ctx, cmd, directory, roleDatasource, p.label())
 			if err != nil {
 				startupCancelled = errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
-				startupFailure = processError("credential/job preparation", err)
+				startupFailure = processErrorFor(p.label(), "credential/job preparation", err)
 			}
 			return process, err
 		},
@@ -141,57 +157,61 @@ func (p *ConfigDrive) Discover(parent context.Context) (plugin.Metadata, error) 
 			case <-time.After(100 * time.Millisecond):
 			}
 			if status := process.exitStatus.Load(); status != 0 {
-				return plugin.Metadata{}, fmt.Errorf("external ConfigDrive exited before protocol handshake (exit code 0x%x)", uint32(status))
+				return plugin.Metadata{}, fmt.Errorf("external %s exited before protocol handshake (exit code 0x%x)", p.label(), uint32(status))
 			}
 		}
-		return plugin.Metadata{}, errors.New("external ConfigDrive startup or protocol handshake failed")
+		return plugin.Metadata{}, fmt.Errorf("external %s startup or protocol handshake failed", p.label())
 	}
-	raw, err := connection.Dispense(datasourcev1.PluginKey)
+	raw, err := connection.Dispense(p.name)
 	if err != nil {
 		if cancelledRPC(ctx, process, err) {
 			return plugin.Metadata{}, ctx.Err()
 		}
-		return plugin.Metadata{}, errors.New("external ConfigDrive interface negotiation failed")
+		return plugin.Metadata{}, fmt.Errorf("external %s interface negotiation failed", p.label())
 	}
 	rpc, ok := raw.(datasourcev1.DatasourceClient)
 	if !ok {
-		return plugin.Metadata{}, errors.New("external ConfigDrive returned an incompatible interface")
+		return plugin.Metadata{}, fmt.Errorf("external %s returned an incompatible interface", p.label())
 	}
 	description, err := rpc.Describe(ctx, &datasourcev1.DescribeRequest{})
 	if err != nil {
 		if cancelledRPC(ctx, process, err) {
 			return plugin.Metadata{}, ctx.Err()
 		}
-		return plugin.Metadata{}, errors.New("external ConfigDrive identity negotiation failed")
+		return plugin.Metadata{}, fmt.Errorf("external %s identity negotiation failed", p.label())
 	}
-	if description.GetProtocolVersion() != datasourcev1.ProtocolVersion || description.GetName() != datasourcev1.PluginKey || description.GetKind() != "datasource" {
-		return plugin.Metadata{}, errors.New("external ConfigDrive identity or protocol version mismatch")
+	if description.GetProtocolVersion() != datasourcev1.ProtocolVersion || description.GetName() != p.name || description.GetKind() != "datasource" {
+		return plugin.Metadata{}, fmt.Errorf("external %s identity or protocol version mismatch", p.label())
 	}
 	response, err := rpc.Discover(ctx, &datasourcev1.DiscoverRequest{SeedDirectory: p.directory, DiscoverVolumes: p.discover})
 	if err != nil {
 		if cancelledRPC(ctx, process, err) {
 			return plugin.Metadata{}, ctx.Err()
 		}
-		return plugin.Metadata{}, fmt.Errorf("external ConfigDrive discovery failed (RPC code %s)", status.Code(err))
+		return plugin.Metadata{}, fmt.Errorf("external %s discovery failed (RPC code %s)", p.label(), status.Code(err))
 	}
 	if response.GetUnavailable() {
 		if response.GetMetadata() != nil {
-			return plugin.Metadata{}, errors.New("external ConfigDrive returned conflicting availability")
+			return plugin.Metadata{}, fmt.Errorf("external %s returned conflicting availability", p.label())
 		}
 		return plugin.Metadata{}, plugin.ErrUnavailable
 	}
 	if response.GetMetadata() == nil {
-		return plugin.Metadata{}, errors.New("external ConfigDrive returned no metadata")
+		return plugin.Metadata{}, fmt.Errorf("external %s returned no metadata", p.label())
 	}
 	// Validate the untrusted response against the same bounded input contract as
 	// built-in ConfigDrive. No external status/error text reaches logs or state.
 	data, _ := json.Marshal(map[string]string{"uuid": response.GetMetadata().GetInstanceId(), "hostname": response.GetMetadata().GetLocalHostname()})
 	metadata, err := configdrive.Parse(data)
+	if p.name == "nocloud" {
+		data, _ = yaml.Marshal(map[string]string{"instance-id": response.GetMetadata().GetInstanceId(), "local-hostname": response.GetMetadata().GetLocalHostname()})
+		metadata, err = nocloud.Parse(data)
+	}
 	if err != nil {
 		return plugin.Metadata{}, err
 	}
 	if metadata.InstanceID != response.GetMetadata().GetInstanceId() || metadata.LocalHostname != response.GetMetadata().GetLocalHostname() {
-		return plugin.Metadata{}, errors.New("external ConfigDrive response is not normalized")
+		return plugin.Metadata{}, fmt.Errorf("external %s response is not normalized", p.label())
 	}
 	return metadata, nil
 }

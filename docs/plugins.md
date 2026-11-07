@@ -3,8 +3,8 @@
 ## Safety model
 
 `wininit` includes a small internal plugin pipeline for built-in datasources and
-provisioners. Implementations are compiled packages by default. ConfigDrive
-can explicitly select a separate verified EXE using the experimental v1
+provisioners. Implementations are compiled packages by default. NoCloud, ConfigDrive and hostname
+can explicitly select separate verified EXEs using the experimental v1
 protobuf/gRPC SDK; see [external plugins](external-plugins.md).
 
 Every plugin is independently opt-in. All seven logical plugins are disabled by default,
@@ -321,6 +321,7 @@ as the datasource type. They must not include raw metadata files or user-data.
 
 The optional [external ConfigDrive](external-plugins.md) is the first
 experimental executable plugin. It stays in this repository as a separate
-EXE and versioned SDK surface. Broader third-party plugins, external
-general provisioners, registries/downloads, and a stable general SDK remain deferred.
+EXE and versioned SDK surface. Named datasource v1 and metadata-only provisioner v1 now support separate
+NoCloud/hostname EXEs; see [metadata SDK](external-sdk.md). Arbitrary third-party
+host registrations, registries/downloads and stable Go API promises remain deferred.
 PowerShell is a narrow separate-process exception; see ADR 0013.

@@ -11,8 +11,8 @@ packaging, and CI.
 The current scope includes NoCloud and ConfigDrive datasources plus hostname,
 password_policy, local_users, authorized_keys, and external PowerShell user-data
 provisioners. All seven logical
-plugins are independently opt-in and disabled by default. ConfigDrive can
-explicitly use a separate verified EXE; builtin mode remains the compatible
+plugins are independently opt-in and disabled by default. NoCloud, ConfigDrive and hostname can
+explicitly use separate verified EXEs; builtin mode remains the compatible
 default. PowerShell is a separate EXE only, never installed by the agent MSI.
 Do not claim that a VM was provisioned merely because the
 service started, metadata was found, or a reboot checkpoint was saved.
@@ -42,9 +42,9 @@ conventions must update this file in the same change.
   perform no I/O. Invoke `Discover` or `Apply` only when that plugin is enabled
   by current configuration. Configuration disablement always wins over old
   persistent checkpoints.
-- The experimental datasource v1 SDK supports reviewed ConfigDrive processes
-  only. The separate experimental userdata v1 SDK supports the reviewed
-  PowerShell process. Neither is a stable general protocol, hostile-code
+- The experimental datasource v1 SDK supports named ConfigDrive/NoCloud
+  processes. The metadata provisioner v1 SDK supports reviewed hostname
+  reconciliation. The separate userdata v1 SDK supports PowerShell. Neither is a stable general protocol, hostile-code
   sandbox, or automatic plugin distribution mechanism.
 
 ## Directory structure
@@ -53,8 +53,11 @@ conventions must update this file in the same change.
 cmd/wininit/              executable entry point
 cmd/wininit-plugin-configdrive/ separate datasource process entry point
 cmd/wininit-plugin-powershell/ separate user-data process entry point
+cmd/wininit-plugin-nocloud/ separate metadata datasource entry point
+cmd/wininit-plugin-hostname/ separate metadata provisioner entry point
 sdk/datasource/v1/        experimental datasource protobuf/gRPC contract
 sdk/userdata/v1/          experimental prepare/execute protobuf/gRPC contract
+sdk/provisioner/v1/       experimental idempotent metadata protobuf/gRPC contract
 internal/app/             composition and command execution
 internal/config/          versioned configuration and validation
 internal/diagnostics/     sanitized diagnostic archive creation
@@ -282,7 +285,7 @@ precondition outside wininit; do not imply the plugin manages groups or sshd.
   Pin every path ancestor without delete sharing until process cleanup; locking
   the image alone does not prevent a Win32 launch path from being redirected
   by a directory rename. Test ancestor swaps and release on Windows.
-- ConfigDrive Windows children retain caller identity but use deny-only Administrators
+- Read-only ConfigDrive/NoCloud Windows children retain caller identity but use deny-only Administrators
   plus ordinary Users/Authenticated Users/Everyone restricting SIDs for a second
   ACL access check, disabled privileges, low
   integrity, and a suspended start before assignment to a kill-on-close job
@@ -401,9 +404,9 @@ precondition outside wininit; do not imply the plugin manages groups or sshd.
 - MSI-created ProgramData root/log/plugin directories and configuration use
   protected SYSTEM/Administrators ACLs. Preserve configuration contents across
   upgrades. Test actual installed DACLs; do not infer protection from XML.
-- Build/distribute the optional ConfigDrive and PowerShell EXEs separately; MSI
-  installs only the agent. SHA256SUMS and CI/release artifacts include all four
-  binaries (three EXEs and the MSI).
+- Build/distribute ConfigDrive, PowerShell, NoCloud and hostname EXEs separately; MSI
+  installs only the agent. SHA256SUMS and CI/release artifacts include all six
+  binaries (five EXEs and the MSI).
 - Do not add the install directory to the machine-wide `PATH`.
 - Unsigned artifacts are acceptable only while the MVP documentation states
   this limitation. Never describe unsigned artifacts as trusted.
@@ -516,3 +519,29 @@ bodies and production code were unchanged and no guest Go installation needed.
 Lifecycle cancellation must match the root context error. A private PowerShell
 session deadline has a distinct context cause and must retain failed/timeout
 evidence even if SCM stop or a root deadline arrives concurrently.
+
+## Metadata process SDK stage (ADR 0014)
+
+- Datasource v1 supports explicit named registration; retain ConfigDrive's
+  original Serve/PluginKey and protobuf wire compatibility. Host validates each
+  datasource response with its own parser; never normalize NoCloud as ConfigDrive.
+- Provisioner v1 is metadata-only and idempotent. Describe includes exact name,
+  kind, version and idempotent semantics. Apply returns a closed outcome enum;
+  unspecified/unknown values fail. No arbitrary config/Any, secrets, scripts,
+  platform callbacks or state handles belong in this retryable contract.
+- Ship NoCloud and hostname as separate EXEs, excluded from MSI and host wrapper
+  dependency graph. Preserve builtin execution for existing v1 configs, explicit
+  external selection, per-plugin enablement, pins and no failure fallback.
+- External hostname additionally requires allow_privileged. Its role retains
+  elevated caller identity, removes shutdown privileges, uses a high-integrity
+  private desktop and a one-process/256 MiB kill-on-close job. Datasource and
+  PowerShell roles keep their previous restrictions/limits. Never conflate them.
+- Keep SDK packages independent of host internals. The independent-consumer test
+  builds a separate temporary Go module; source and protobuf conformance stay
+  together while experimental. No automatic arbitrary-name registration exists.
+- Session deadlines include verification/startup/RPC; private provisioner timeout
+  causes must not be mistaken for root cancellation. Discard child output and
+  remote errors, enforce 128 KiB bounds, and close jobs/images on every path.
+- Native hostname tests target the already configured name and verify unchanged
+  before/after state; neither CI nor this guest acceptance renames or reboots.
+  Guest verification uses the existing SSH host without changing identity/SSHD.

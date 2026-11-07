@@ -42,15 +42,17 @@ type PluginConfig struct {
 }
 
 type DatasourceConfig struct {
-	NoCloud     LocalDatasourceConfig `yaml:"nocloud" json:"nocloud"`
-	ConfigDrive ConfigDriveConfig     `yaml:"configdrive" json:"configdrive"`
+	NoCloud     ProcessDatasourceConfig `yaml:"nocloud" json:"nocloud"`
+	ConfigDrive ProcessDatasourceConfig `yaml:"configdrive" json:"configdrive"`
 }
 
-type ConfigDriveConfig struct {
+type ProcessDatasourceConfig struct {
 	LocalDatasourceConfig `yaml:",inline"`
 	Execution             string                 `yaml:"execution" json:"execution"`
 	Process               pluginprocess.Settings `yaml:"process" json:"process"`
 }
+type ConfigDriveConfig = ProcessDatasourceConfig
+
 type LocalDatasourceConfig struct {
 	Enabled         bool   `yaml:"enabled" json:"enabled"`
 	SeedDirectory   string `yaml:"seed_directory" json:"seed_directory"`
@@ -58,7 +60,7 @@ type LocalDatasourceConfig struct {
 }
 
 type ProvisionerConfig struct {
-	Hostname           ToggleConfig                     `yaml:"hostname" json:"hostname"`
+	Hostname           HostnameConfig                   `yaml:"hostname" json:"hostname"`
 	LocalUsers         LocalUsersConfig                 `yaml:"local_users" json:"local_users"`
 	PasswordPolicy     PasswordPolicyConfig             `yaml:"password_policy" json:"password_policy"`
 	AuthorizedKeys     AuthorizedKeysConfig             `yaml:"authorized_keys" json:"authorized_keys"`
@@ -76,6 +78,11 @@ type PasswordPolicyConfig struct {
 type AuthorizedKeysConfig struct {
 	Enabled bool               `yaml:"enabled" json:"enabled"`
 	Users   []identity.KeyUser `yaml:"users" json:"users"`
+}
+type HostnameConfig struct {
+	Enabled                           bool   `yaml:"enabled" json:"enabled"`
+	Execution                         string `yaml:"execution" json:"execution"`
+	pluginprocess.ProvisionerSettings `yaml:",inline"`
 }
 type ToggleConfig struct {
 	Enabled bool `yaml:"enabled" json:"enabled"`
@@ -102,10 +109,10 @@ func Default() Config {
 		Plugins: PluginConfig{
 			Directory: filepath.Join(programData, "wininit", "plugins"),
 			Datasources: DatasourceConfig{
-				NoCloud:     LocalDatasourceConfig{DiscoverVolumes: true},
+				NoCloud:     ConfigDriveConfig{LocalDatasourceConfig: LocalDatasourceConfig{DiscoverVolumes: true}, Execution: "builtin", Process: pluginprocess.Settings{TimeoutSeconds: 15}},
 				ConfigDrive: ConfigDriveConfig{LocalDatasourceConfig: LocalDatasourceConfig{DiscoverVolumes: true}, Execution: "builtin", Process: pluginprocess.Settings{TimeoutSeconds: 15}},
 			},
-			Provisioners: ProvisionerConfig{PasswordPolicy: PasswordPolicyConfig{PasswordPolicy: identity.DefaultPasswordPolicy()}, PowerShellUserData: pluginprocess.PowerShellSettings{MaxOutputBytes: 64 << 10, Process: pluginprocess.Settings{TimeoutSeconds: 120}}},
+			Provisioners: ProvisionerConfig{Hostname: HostnameConfig{Execution: "builtin", ProvisionerSettings: pluginprocess.ProvisionerSettings{Process: pluginprocess.Settings{TimeoutSeconds: 30}}}, PasswordPolicy: PasswordPolicyConfig{PasswordPolicy: identity.DefaultPasswordPolicy()}, PowerShellUserData: pluginprocess.PowerShellSettings{MaxOutputBytes: 64 << 10, Process: pluginprocess.Settings{TimeoutSeconds: 120}}},
 		},
 		Reboot: RebootConfig{Policy: "never"},
 	}
@@ -196,7 +203,7 @@ func (c Config) Validate() error {
 	for _, entry := range []struct {
 		name   string
 		source LocalDatasourceConfig
-	}{{"nocloud", c.Plugins.Datasources.NoCloud}, {"configdrive", c.Plugins.Datasources.ConfigDrive.LocalDatasourceConfig}} {
+	}{{"nocloud", c.Plugins.Datasources.NoCloud.LocalDatasourceConfig}, {"configdrive", c.Plugins.Datasources.ConfigDrive.LocalDatasourceConfig}} {
 		name, source := entry.name, entry.source
 		if source.Enabled {
 			if source.SeedDirectory == "" && !source.DiscoverVolumes {
@@ -210,13 +217,27 @@ func (c Config) Validate() error {
 			}
 		}
 	}
-	if c.Plugins.Datasources.ConfigDrive.Enabled {
-		switch c.Plugins.Datasources.ConfigDrive.Execution {
+	for _, entry := range []struct {
+		name   string
+		source ConfigDriveConfig
+	}{{"nocloud", c.Plugins.Datasources.NoCloud}, {"configdrive", c.Plugins.Datasources.ConfigDrive}} {
+		if entry.source.Enabled {
+			switch entry.source.Execution {
+			case "builtin":
+			case "external":
+				errs = append(errs, entry.source.Process.Validate())
+			default:
+				errs = append(errs, fmt.Errorf("%s.execution must be builtin or external", entry.name))
+			}
+		}
+	}
+	if c.Plugins.Provisioners.Hostname.Enabled {
+		switch c.Plugins.Provisioners.Hostname.Execution {
 		case "builtin":
 		case "external":
-			errs = append(errs, c.Plugins.Datasources.ConfigDrive.Process.Validate())
+			errs = append(errs, c.Plugins.Provisioners.Hostname.ProvisionerSettings.Validate())
 		default:
-			errs = append(errs, errors.New("configdrive.execution must be builtin or external"))
+			errs = append(errs, errors.New("hostname.execution must be builtin or external"))
 		}
 	}
 	if c.Reboot.Policy != "never" {

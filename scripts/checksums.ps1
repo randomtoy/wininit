@@ -11,7 +11,7 @@ if (-not $DistDirectory) {
     $DistDirectory = Join-Path $repoRoot 'dist'
 }
 
-$artifactNames = @('wininit-windows-amd64.exe', 'wininit-windows-amd64.msi', 'wininit-plugin-configdrive-windows-amd64.exe', 'wininit-plugin-powershell-windows-amd64.exe')
+$artifactNames = @('wininit-windows-amd64.exe', 'wininit-windows-amd64.msi', 'wininit-plugin-configdrive-windows-amd64.exe', 'wininit-plugin-powershell-windows-amd64.exe', 'wininit-plugin-nocloud-windows-amd64.exe', 'wininit-plugin-hostname-windows-amd64.exe')
 $lines = foreach ($name in $artifactNames) {
     $path = Join-Path $DistDirectory $name
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {

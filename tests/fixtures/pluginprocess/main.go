@@ -77,6 +77,10 @@ func main() {
 		os.Exit(23)
 	}
 	mode := strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe")
+	if strings.HasPrefix(mode, "prov-") {
+		serveProvisionerFixture(mode)
+		return
+	}
 	if strings.HasPrefix(mode, "ps-") {
 		servePowerShellFixture(mode)
 		return

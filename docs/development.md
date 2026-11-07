@@ -63,7 +63,7 @@ release-style Windows target and produces all three executables, MSI, and
 `SHA256SUMS`. Consult the build script output if the local WiX dependency is
 missing or has the wrong version.
 
-Packaging also verifies that `SHA256SUMS` matches all four artifacts and uses
+Packaging also verifies that `SHA256SUMS` matches all six artifacts and uses
 portable LF line endings.
 
 The WiX project contains `<AcceptEula>wix7</AcceptEula>`, the acknowledgement
@@ -186,3 +186,11 @@ agent dependency graph. Native Windows tests launch the actual OS interpreter;
 portable tests cover source/envelope validation, RPC redaction and durable
 one-shot recovery. See [operator policy](powershell-user-data.md) and ADR 0013.
 Never reboot a guest unless that specific acceptance run authorizes it.
+
+## Metadata process SDK
+
+NoCloud and hostname have optional separate EXEs alongside ConfigDrive and
+PowerShell. MSI installs only the agent; release/checksum artifacts include all
+five EXEs and the MSI. Builtin NoCloud/hostname remain compatible defaults, all
+plugins remain disabled by default, and external hostname requires privileged
+approval. See [metadata SDK](external-sdk.md) for protocol, privilege, compatibility and test boundaries.

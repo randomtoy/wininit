@@ -10,8 +10,8 @@ import (
 	"unsafe"
 )
 
-func prepareProcessProfile(ctx context.Context, cmd *exec.Cmd, privileged bool) (*processControl, error) {
-	if !privileged {
+func prepareProcessProfile(ctx context.Context, cmd *exec.Cmd, role processRole) (*processControl, error) {
+	if role == roleDatasource {
 		return prepareProcess(ctx, cmd)
 	}
 	if err := ctx.Err(); err != nil {
@@ -27,7 +27,7 @@ func prepareProcessProfile(ctx context.Context, cmd *exec.Cmd, privileged bool) 
 		return nil, err
 	}
 	if !original.IsElevated() && !user.User.Sid.IsWellKnown(windows.WinLocalSystemSid) {
-		return nil, errors.New("PowerShell user-data requires an elevated agent account")
+		return nil, errors.New("privileged provisioner requires an elevated agent account")
 	}
 	// This role intentionally retains provisioning access. Deleting direct
 	// reboot privileges is defense in depth, not a sandbox for hostile SYSTEM
@@ -61,6 +61,11 @@ func prepareProcessProfile(ctx context.Context, cmd *exec.Cmd, privileged bool) 
 	limits.BasicLimitInformation.ActiveProcessLimit = 8
 	limits.ProcessMemoryLimit = 512 << 20
 	limits.JobMemoryLimit = 512 << 20
+	if role == roleProvisioner {
+		limits.BasicLimitInformation.ActiveProcessLimit = 1
+		limits.ProcessMemoryLimit = 256 << 20
+		limits.JobMemoryLimit = 256 << 20
+	}
 	if _, err := windows.SetInformationJobObject(control.job, windows.JobObjectExtendedLimitInformation, uintptr(unsafe.Pointer(&limits)), uint32(unsafe.Sizeof(limits))); err != nil {
 		return fail(err)
 	}

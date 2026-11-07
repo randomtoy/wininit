@@ -106,7 +106,7 @@ func (p *PowerShell) Prepare(parent context.Context, metadata plugin.Metadata) (
 			cmd := exec.CommandContext(ctx, p.settings.Process.Executable)
 			cmd.Env = append(environment(), spec.Env...)
 			var startErr error
-			process, startErr = newProcessRunnerProfile(ctx, cmd, directory, true, "PowerShell user-data")
+			process, startErr = newProcessRunnerProfile(ctx, cmd, directory, rolePowerShell, "PowerShell user-data")
 			if startErr != nil {
 				startupCancelled = errors.Is(startErr, context.Canceled) || errors.Is(startErr, context.DeadlineExceeded)
 				startupFailure = processErrorFor("PowerShell user-data", "credential/job preparation", startErr)
