@@ -465,6 +465,9 @@ precondition outside wininit; do not imply the plugin manages groups or sshd.
   acquisition and can make that probe race the service.
 - Persist passed guest cases incrementally and log fixed progress labels. Bound
   the suite step below the job timeout so failure evidence can still upload.
+  Use explicit bounded ServiceController waits and dispose SCM handles before
+  major upgrades; failed-start cases require fresh state, never an implicit
+  unbounded wait for a transient running state.
 - Keep structured startup milestones around lock acquisition and the first
   Registry checkpoint so SCM-running/engine-starting failures are diagnosable.
 - Release jobs run only for trusted version tags and prepare draft prereleases.

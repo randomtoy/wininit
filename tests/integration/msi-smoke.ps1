@@ -266,7 +266,7 @@ try {
     if ($UpgradeMsiPath) {
         # Administrator-owned contents must survive a major upgrade byte for
         # byte. The sentinel shares the actual lifecycle checkpoint parent.
-        Stop-Service -Name wininit -ErrorAction Stop
+        & (Join-Path $PSScriptRoot '..\e2e\service-control.ps1') -Action stop
         $beforeUpgrade = (& $executable status --json | ConvertFrom-Json)
         if ($LASTEXITCODE -ne 0) { throw 'Cannot read lifecycle generation before upgrade.' }
         [IO.File]::AppendAllText($configuration, "`n# upgrade preservation $sentinelValue`n", [Text.UTF8Encoding]::new($false))

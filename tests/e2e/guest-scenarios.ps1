@@ -46,13 +46,7 @@ function Protect-Path([string]$Path, [bool]$Readable) {
     Set-Acl -LiteralPath $Path -AclObject $acl
 }
 function Stop-Agent {
-    $service = Get-Service wininit
-    try {
-        if ($service.Status -ne 'Stopped') {
-            Stop-Service wininit -ErrorAction Stop
-            $service.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Stopped, [TimeSpan]::FromSeconds(30))
-        }
-    } finally { $service.Dispose() }
+    & (Join-Path $PSScriptRoot 'service-control.ps1') -Action stop
 }
 function Write-Configuration([bool]$Enabled, [bool]$BadPin, [bool]$Missing, [bool]$PowerShell) {
     $script:scenarioEnabled = $Enabled
@@ -143,8 +137,7 @@ function Start-Scenario([string]$Expected, [int]$MinimumAttempts = 0) {
             $script:minimumSourceAttempts = [int]$lifecycle.attempts.PSObject.Properties[$source].Value + 1
         }
     }
-    try { Start-Service wininit -ErrorAction Stop }
-    catch { if ($Expected -ne 'failed') { throw } }
+    & (Join-Path $PSScriptRoot 'service-control.ps1') -Action start -AllowFailedStart:($Expected -eq 'failed')
     return Wait-Provisioning $Expected $MinimumAttempts
 }
 function Pass([string]$Name) {
