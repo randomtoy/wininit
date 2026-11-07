@@ -545,3 +545,10 @@ evidence even if SCM stop or a root deadline arrives concurrently.
 - Native hostname tests target the already configured name and verify unchanged
   before/after state; neither CI nor this guest acceptance renames or reboots.
   Guest verification uses the existing SSH host without changing identity/SSHD.
+
+The SDK guest negative-pin acceptance exposed a fast SCM startup failure: a
+stopped service must make `service start` return fixed numeric exit codes
+immediately, rather than waiting forever for Running. Preserve ordinary stop
+cleanup and context cancellation; the native wait-state regression covers a
+StartPending-to-Stopped transition. Operator icacls examples set ownership and
+grants in separate commands because combining /setowner with /grant is invalid.

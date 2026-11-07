@@ -199,13 +199,15 @@ func (p *Datasource) Discover(parent context.Context) (plugin.Metadata, error) {
 	if response.GetMetadata() == nil {
 		return plugin.Metadata{}, fmt.Errorf("external %s returned no metadata", p.label())
 	}
-	// Validate the untrusted response against the same bounded input contract as
-	// built-in ConfigDrive. No external status/error text reaches logs or state.
-	data, _ := json.Marshal(map[string]string{"uuid": response.GetMetadata().GetInstanceId(), "hostname": response.GetMetadata().GetLocalHostname()})
-	metadata, err := configdrive.Parse(data)
+	// Each datasource retains its own bounded parsing/normalization contract.
+	// No external status/error text reaches logs or state.
+	var metadata plugin.Metadata
 	if p.name == "nocloud" {
-		data, _ = yaml.Marshal(map[string]string{"instance-id": response.GetMetadata().GetInstanceId(), "local-hostname": response.GetMetadata().GetLocalHostname()})
+		data, _ := yaml.Marshal(map[string]string{"instance-id": response.GetMetadata().GetInstanceId(), "local-hostname": response.GetMetadata().GetLocalHostname()})
 		metadata, err = nocloud.Parse(data)
+	} else {
+		data, _ := json.Marshal(map[string]string{"uuid": response.GetMetadata().GetInstanceId(), "hostname": response.GetMetadata().GetLocalHostname()})
+		metadata, err = configdrive.Parse(data)
 	}
 	if err != nil {
 		return plugin.Metadata{}, err

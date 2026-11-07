@@ -70,8 +70,10 @@ administrator membership alone does not satisfy the explicit owner check.
 For a new dedicated plugin directory and reviewed image:
 
 ```powershell
-icacls.exe 'C:\Program Files\WinInit\plugins' /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)(F)' '*S-1-5-32-544:(OI)(CI)(F)' '*S-1-5-32-545:(OI)(CI)(RX)' /setowner '*S-1-5-32-544'
-icacls.exe 'C:\Program Files\WinInit\plugins\wininit-plugin-configdrive.exe' /inheritance:r /grant:r '*S-1-5-18:(F)' '*S-1-5-32-544:(F)' '*S-1-5-32-545:(RX)' /setowner '*S-1-5-32-544'
+icacls.exe 'C:\Program Files\WinInit\plugins' /setowner '*S-1-5-32-544'
+icacls.exe 'C:\Program Files\WinInit\plugins' /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)(F)' '*S-1-5-32-544:(OI)(CI)(F)' '*S-1-5-32-545:(OI)(CI)(RX)'
+icacls.exe 'C:\Program Files\WinInit\plugins\wininit-plugin-configdrive.exe' /setowner '*S-1-5-32-544'
+icacls.exe 'C:\Program Files\WinInit\plugins\wininit-plugin-configdrive.exe' /inheritance:r /grant:r '*S-1-5-18:(F)' '*S-1-5-32-544:(F)' '*S-1-5-32-545:(RX)'
 ```
 
 Remove any pre-existing explicit write grants to other principals. DOS-device,
