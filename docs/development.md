@@ -56,14 +56,14 @@ disabled execution. Windows tests enumerate labels without mounting media or
 changing a hostname. MSI smoke verifies all seven logical plugins remain
 disabled and installed ProgramData/configuration DACLs are protected.
 
-`make build` produces `dist/wininit-windows-amd64.exe`, the separate
-`dist/wininit-plugin-configdrive-windows-amd64.exe`, and
-`dist/wininit-plugin-powershell-windows-amd64.exe`. `make package` is the
-release-style Windows target and produces all three executables, MSI, and
-`SHA256SUMS`. Consult the build script output if the local WiX dependency is
-missing or has the wrong version.
+`make build` produces the agent and four separate plugin EXEs (ConfigDrive,
+PowerShell, NoCloud and hostname). `make package` adds the agent-only MSI,
+five per-EXE CycloneDX SBOMs, `release-manifest.json` and `SHA256SUMS`.
+The pinned SBOM generator is a build-time Go tool, outside runtime dependencies.
+Consult the build script output if the local WiX dependency is missing or has
+the wrong version.
 
-Packaging also verifies that `SHA256SUMS` matches all six artifacts and uses
+Packaging also verifies that `SHA256SUMS` matches all twelve subjects and uses
 portable LF line endings.
 
 The WiX project contains `<AcceptEula>wix7</AcceptEula>`, the acknowledgement
@@ -151,8 +151,10 @@ MSI-compatible numeric components, so the packaging script maps Git tags
 deterministically and rejects versions it cannot represent safely.
 
 Pushes of version tags matching `v*` invoke the release workflow. It validates
-source, builds native artifacts, generates checksums, runs applicable tests,
-and publishes a GitHub Release. MVP artifacts are unsigned.
+source, builds native artifacts and SBOMs, runs the no-reboot upgrade/plugin
+suite, attests checksums/SBOMs and prepares a draft prerelease. Hosted artifacts
+remain unsigned. Optional certificate signing, verification commands and
+remaining stable-release gates are documented in [release preparation](release.md).
 
 ## Diagnostics and troubleshooting
 

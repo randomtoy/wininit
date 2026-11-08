@@ -114,6 +114,27 @@ on Server 2025 without reboot. The broader matrix remains pending.
 Automate QEMU/KVM and OpenStack tests for Windows Server 2022/2025, then add
 code signing, artifact provenance, and SBOM publication.
 
+Implementation status: repeatable Windows PowerShell 5.1 no-reboot acceptance
+now covers MSI install/ACLs/default disablement, same-source lower-version
+upgrade with preserved configuration/state sentinel, LocalSystem external
+NoCloud/ConfigDrive/hostname, PowerShell failure/replay, and uninstall/cleanup.
+CI runs this suite. A manually dispatched four-cell workflow can reuse exact
+successful push-CI artifacts on administrator-provisioned Server 2022/2025
+QEMU/OpenStack guest runners; those runners/images are not provisioned here.
+Per-EXE CycloneDX inventories, source/artifact manifest, canonical checksums,
+optional certificate-store Authenticode signing and trusted-tag provenance/SBOM
+attestations prepare draft prereleases. See [release preparation](release.md)
+and ADR 0015 for scope and remaining gates.
+The [PR 7 review run](../tests/e2e/2026-11-08-pr7-review.md) additionally passed
+the same MSI/local-seed suite on the existing Server 2025 Q35 guest over SSH,
+including preserved upgrade state, eleven plugin cases and verified cleanup,
+without changing names or rebooting Windows.
+
+This milestone remains incomplete: the full real guest/media/rename/reboot
+matrix, historical-release upgrade, production certificate verification and
+actual tag/OIDC publication need recorded evidence. No current script reboots
+the test host or claims a skipped case passed.
+
 Exit criteria: clean-image install, initialization, reboot/resume, upgrade,
 uninstall, and failure recovery are exercised without distributing Windows
 media or license keys.

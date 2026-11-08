@@ -1,0 +1,78 @@
+name: Guest E2E (manual, no reboot)
+
+on:
+  workflow_dispatch:
+    inputs:
+      ci_run_id:
+        description: Successful push CI run for this exact reviewed commit
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  guest:
+    name: Server ${{ matrix.server }} / ${{ matrix.provider }}
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    # Administrators provision licensed, disposable, isolated guests. Never
+    # route pull_request events or unreviewed forks onto privileged runners.
+    runs-on:
+      group: wininit-e2e-reviewed
+      labels: [self-hosted, Windows, X64, wininit-e2e, 'server-${{ matrix.server }}', '${{ matrix.provider }}']
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        server: ['2022', '2025']
+        provider: [qemu, openstack]
+    concurrency:
+      group: guest-e2e-${{ matrix.server }}-${{ matrix.provider }}
+      cancel-in-progress: false
+    steps:
+      - name: Check out reviewed harness
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Bind artifact run to this exact commit and CI workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.ci_run_id }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:RUN_ID -notmatch '^[0-9]+$') { throw 'Invalid CI run ID.' }
+          $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:RUN_ID" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect CI run.' }
+          $workflow = gh api "repos/$env:GITHUB_REPOSITORY/actions/workflows/ci.yml" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect CI workflow.' }
+          if ($run.head_sha -ne $env:GITHUB_SHA -or $run.conclusion -ne 'success' -or
+              $run.event -ne 'push' -or $run.workflow_id -ne $workflow.id -or
+              $run.head_repository.full_name -ne $env:GITHUB_REPOSITORY) {
+            throw 'Require successful same-repository push CI for this exact commit.'
+          }
+      - name: Download exact tested candidate and baseline
+        uses: actions/download-artifact@9000827ccba6dbab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: wininit-windows-amd64
+          run-id: ${{ inputs.ci_run_id }}
+          github-token: ${{ github.token }}
+          path: dist
+      - name: Check source binding and run no-reboot acceptance
+        timeout-minutes: 12
+        shell: powershell
+        run: |
+          $manifest = Get-Content ./dist/release-manifest.json -Raw | ConvertFrom-Json
+          if ($manifest.commit -ne $env:GITHUB_SHA -or $manifest.source_modified) { throw 'Artifact source mismatch.' }
+          ./tests/e2e/Invoke-NoRebootAcceptance.ps1 -DistDirectory ./dist `
+            -BaselineMsiPath ./dist/baseline/wininit-windows-amd64.msi -BaselineVersion 0.0.0 `
+            -ArtifactsDirectory './artifacts/msi logs' -ExpectedServer '${{ matrix.server }}' -Provider '${{ matrix.provider }}'
+      - name: Upload per-guest evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: e2e-${{ matrix.server }}-${{ matrix.provider }}-${{ github.run_id }}
+          path: artifacts/**
+          if-no-files-found: ignore
+          retention-days: 30

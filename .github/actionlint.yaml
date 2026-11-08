@@ -1,0 +1,7 @@
+self-hosted-runner:
+  labels:
+    - wininit-e2e
+    - server-2022
+    - server-2025
+    - qemu
+    - openstack

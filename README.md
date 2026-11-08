@@ -192,7 +192,7 @@ Prerequisites:
 make build       # Windows AMD64 executable
 make test        # unit tests
 make lint        # formatting and static analysis
-make package     # executable, MSI, and checksums on Windows
+make package     # EXEs, MSI, SBOMs, manifest and checksums on Windows
 ```
 
 The executable can be cross-compiled from a non-Windows host. MSI construction
@@ -206,6 +206,8 @@ and comply with the current WiX Open Source Maintenance Fee (OSMF) terms.
 
 For commands without Make, local testing, and Windows integration setup, see
 [Development](docs/development.md).
+For candidate signing, authenticated checksum/SBOM verification, draft releases
+and remaining stable-release gates, see [Release preparation](docs/release.md).
 
 ## Testing
 
@@ -215,7 +217,7 @@ The repository uses:
   selection, metadata parsing, hostname validation, state migration/recovery,
   and version information;
 - Windows tests using dedicated, isolated Registry keys;
-- native Windows service and MSI smoke tests where elevation is available; and
+- native Windows service/MSI tests and repeatable no-reboot guest acceptance; and
 - cross-compilation checks for the Windows AMD64 executable.
 
 Tests must clean up resources they create. They must never use the production

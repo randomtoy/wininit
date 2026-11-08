@@ -5,11 +5,18 @@ param(
     [Parameter(Mandatory)]
     [string]$ExpectedMsiVersion,
     [string]$ExpectedExecutableVersion,
-    [string]$ArtifactsDirectory
+    [string]$ArtifactsDirectory,
+    [string]$UpgradeMsiPath,
+    [string]$ExpectedUpgradeMsiVersion,
+    [string]$ExpectedUpgradeExecutableVersion,
+    [string]$PluginDistDirectory
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+if (-not [Environment]::Is64BitProcess -or $env:PROCESSOR_ARCHITECTURE -ne 'AMD64') {
+    throw 'MSI smoke requires native 64-bit PowerShell on Windows AMD64.'
+}
 
 if (-not $ArtifactsDirectory) {
     $ArtifactsDirectory = Join-Path (Get-Location) 'artifacts'
@@ -31,6 +38,7 @@ function Get-MsiProperty {
         [Parameter(Mandatory)][string]$Name
     )
 
+    Write-Host "Reading MSI property: $Name"
     $installer = New-Object -ComObject WindowsInstaller.Installer
     $database = $installer.GetType().InvokeMember(
         'OpenDatabase',
@@ -43,17 +51,42 @@ function Get-MsiProperty {
     $view.Execute()
     $record = $view.Fetch()
     if ($null -eq $record) { throw "MSI property '$Name' is missing." }
-    return $record.StringData(1)
+    $value = $record.StringData(1)
+    Write-Host "Read MSI property: $Name"
+    return $value
 }
 
 function Invoke-MsiExec {
     param([Parameter(Mandatory)][string[]]$Arguments)
 
-    $process = Start-Process -FilePath "$env:SystemRoot\System32\msiexec.exe" `
-        -ArgumentList $Arguments -Wait -PassThru
-    if ($process.ExitCode -ne 0) {
-        throw "msiexec failed with exit code $($process.ExitCode): $($Arguments -join ' ')"
+    # Start-Process joins its argument array without quoting. Quote values with
+    # whitespace, leaving MSI switches/properties bare for its command parser.
+    foreach ($argument in $Arguments) {
+        if ($argument.Contains('"') -or $argument.EndsWith('\')) { throw 'Unsafe MSI argument.' }
     }
+    $quoted = ($Arguments | ForEach-Object {
+        if ($_ -match '\s') { '"' + $_ + '"' } else { $_ }
+    }) -join ' '
+    Write-Host "MSI begin: $([IO.Path]::GetFileName($Arguments[-1]))"
+    # Start-Process -Wait waits for a process tree on Windows. Wait for the
+    # specific client instead; installed automatic services are long lived.
+    $process = Start-Process -FilePath "$env:SystemRoot\System32\msiexec.exe" `
+        -ArgumentList $quoted -PassThru
+    try {
+        $null = $process.Handle
+        if (-not $process.WaitForExit(120000)) {
+            # Only this owned client is terminated. Never kill a system-wide
+            # msiexec/service by name; preserve any still-registered product.
+            $process.Kill()
+            $process.WaitForExit()
+            throw 'Owned msiexec client exceeded two minutes; inspect the verbose MSI log.'
+        }
+        if ($process.ExitCode -ne 0) {
+            throw "msiexec failed with exit code $($process.ExitCode): $($Arguments -join ' ')"
+        }
+        Write-Host "MSI complete: $([IO.Path]::GetFileName($Arguments[-1]))"
+    }
+    finally { $process.Dispose() }
 }
 
 function Wait-ServiceAbsent {
@@ -68,12 +101,7 @@ function Wait-ServiceAbsent {
 }
 
 function Get-HostNameState {
-    $activePath = 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ActiveComputerName'
-    $pendingPath = 'HKLM:\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName'
-    return [PSCustomObject]@{
-        Active  = (Get-ItemPropertyValue -LiteralPath $activePath -Name 'ComputerName' -ErrorAction Stop)
-        Pending = (Get-ItemPropertyValue -LiteralPath $pendingPath -Name 'ComputerName' -ErrorAction Stop)
-    }
+    return & (Join-Path $PSScriptRoot '..\e2e\host-snapshot.ps1')
 }
 
 function Assert-HostNameUnchanged {
@@ -83,8 +111,10 @@ function Assert-HostNameUnchanged {
     )
 
     $actual = Get-HostNameState
-    if ($actual.Active -ne $Expected.Active -or $actual.Pending -ne $Expected.Pending) {
-        throw "Host name changed during $Phase (active '$($Expected.Active)' -> '$($actual.Active)', pending '$($Expected.Pending)' -> '$($actual.Pending)')."
+    if ($actual.Active -ne $Expected.Active -or $actual.Pending -ne $Expected.Pending -or
+        $actual.NetBiosActive -ne $Expected.NetBiosActive -or $actual.NetBiosPending -ne $Expected.NetBiosPending -or
+        $actual.BootUtc -ne $Expected.BootUtc) {
+        throw "Host name or boot timestamp changed during $Phase (active '$($Expected.Active)' -> '$($actual.Active)', pending '$($Expected.Pending)' -> '$($actual.Pending)')."
     }
 }
 
@@ -97,11 +127,25 @@ $actualVersion = Get-MsiProperty -Path $MsiPath -Name 'ProductVersion'
 if ($actualVersion -ne $ExpectedMsiVersion) {
     throw "Unexpected ProductVersion '$actualVersion'; expected '$ExpectedMsiVersion'."
 }
+$uninstallMsi = $MsiPath
+if ($UpgradeMsiPath) {
+    $UpgradeMsiPath = (Resolve-Path -LiteralPath $UpgradeMsiPath).Path
+    if ((Get-MsiProperty $UpgradeMsiPath 'UpgradeCode') -ne $expectedUpgradeCode -or
+        (Get-MsiProperty $UpgradeMsiPath 'ProductVersion') -ne $ExpectedUpgradeMsiVersion -or
+        [version]$ExpectedUpgradeMsiVersion -le [version]$ExpectedMsiVersion -or
+        (Get-MsiProperty $UpgradeMsiPath 'ProductCode') -eq (Get-MsiProperty $MsiPath 'ProductCode')) {
+        throw 'Upgrade requires a newer version, the same UpgradeCode, and a distinct ProductCode.'
+    }
+}
 
 $existingService = Get-Service -Name 'wininit' -ErrorAction SilentlyContinue
 if ($null -ne $existingService) {
     throw 'A wininit service already exists. Refusing to alter a pre-existing installation.'
 }
+if (Test-Path -LiteralPath 'HKLM:\SOFTWARE\Wininit\Installation') {
+    throw 'An MSI ownership marker already exists. Refusing to alter a pre-existing product.'
+}
+& (Join-Path $PSScriptRoot 'assert-no-msi-product.ps1')
 $originalHostName = Get-HostNameState
 
 $installed = $false
@@ -112,8 +156,8 @@ $installationKey = Join-Path $stateKey 'Installation'
 $sentinelName = 'MsiSmokePreserve'
 $sentinelValue = [Guid]::NewGuid().ToString('D')
 try {
-    Invoke-MsiExec -Arguments @('/i', $MsiPath, '/qn', '/norestart', '/l*v', $installLog)
     $installed = $true
+    Invoke-MsiExec -Arguments @('/i', $MsiPath, '/qn', '/norestart', 'REBOOT=ReallySuppress', '/l*v', $installLog)
 
     $installDirectory = Join-Path $env:ProgramFiles 'WinInit'
     $executable = Join-Path $installDirectory 'wininit.exe'
@@ -122,6 +166,10 @@ try {
     $pluginsDirectory = Join-Path $env:ProgramData 'WinInit\plugins'
     foreach ($path in @($executable, $configuration, $logsDirectory, $pluginsDirectory)) {
         if (-not (Test-Path -LiteralPath $path)) { throw "Expected installed path is missing: $path" }
+    }
+    if (@(Get-ChildItem -LiteralPath $installDirectory -File -Recurse).Count -ne 1 -or
+        @(Get-ChildItem -LiteralPath $pluginsDirectory -Filter '*.exe' -File).Count -ne 0) {
+        throw 'Agent-only MSI unexpectedly installed additional payloads/plugins.'
     }
     foreach ($path in @((Join-Path $env:ProgramData 'WinInit'), $configuration, $logsDirectory, $pluginsDirectory)) {
         $acl = Get-Acl -LiteralPath $path
@@ -144,6 +192,13 @@ try {
     }
     $managedBy = Get-ItemPropertyValue -LiteralPath $installationKey -Name 'ManagedBy' -ErrorAction Stop
     if ($managedBy -ne 'MSI') { throw "Unexpected MSI management marker '$managedBy'." }
+    $refusedRegisteredProduct = $false
+    try { & (Join-Path $PSScriptRoot 'assert-no-msi-product.ps1') }
+    catch {
+        if ($_.Exception.Message -notlike 'A registered WinInit MSI product remains*') { throw }
+        $refusedRegisteredProduct = $true
+    }
+    if (-not $refusedRegisteredProduct) { throw 'Read-only MSI inventory missed the installed product.' }
     # The MSI marker already guarantees this key exists. New-Item -Force would
     # replace the Registry key and erase both checkpoints and Installation.
     New-ItemProperty -LiteralPath $stateKey -Name $sentinelName -Value $sentinelValue -PropertyType String -Force | Out-Null
@@ -154,6 +209,7 @@ try {
     $service = Get-Service -Name 'wininit' -ErrorAction Stop
     $service.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Running, [TimeSpan]::FromSeconds(30))
     $serviceRecord = Get-CimInstance Win32_Service -Filter "Name='wininit'"
+    if ($serviceRecord.StartName -ne 'LocalSystem') { throw 'MSI service is not running as LocalSystem.' }
     if ($serviceRecord.StartMode -ne 'Auto') {
         throw "wininit service start mode is '$($serviceRecord.StartMode)', expected 'Auto'."
     }
@@ -163,10 +219,10 @@ try {
     $service.Close()
     $service = $null
 
-    $versionOutput = (& $executable version 2>&1 | Out-String).Trim()
-    if ($LASTEXITCODE -ne 0) { throw "wininit version failed: $versionOutput" }
-    if ($ExpectedExecutableVersion -and $versionOutput -notlike "*$ExpectedExecutableVersion*") {
-        throw "Version output '$versionOutput' does not contain '$ExpectedExecutableVersion'."
+    $versionOutput = (& $executable version --json | ConvertFrom-Json)
+    if ($LASTEXITCODE -ne 0) { throw 'wininit version failed.' }
+    if ($ExpectedExecutableVersion -and $versionOutput.version -cne $ExpectedExecutableVersion) {
+        throw 'Installed agent version differs from the expected executable version.'
     }
 
     $status = $null
@@ -227,6 +283,47 @@ try {
     }
     Assert-HostNameUnchanged -Expected $originalHostName -Phase 'install and service startup'
 
+    if ($UpgradeMsiPath) {
+        # Administrator-owned contents must survive a major upgrade byte for
+        # byte. The sentinel shares the actual lifecycle checkpoint parent.
+        & (Join-Path $PSScriptRoot '..\e2e\service-control.ps1') -Action stop
+        $beforeUpgrade = (& $executable status --json | ConvertFrom-Json)
+        if ($LASTEXITCODE -ne 0) { throw 'Cannot read lifecycle generation before upgrade.' }
+        [IO.File]::AppendAllText($configuration, "`n# upgrade preservation $sentinelValue`n", [Text.UTF8Encoding]::new($false))
+        $configurationHash = (Get-FileHash -LiteralPath $configuration -Algorithm SHA256).Hash
+        Invoke-MsiExec -Arguments @('/i', $UpgradeMsiPath, '/qn', '/norestart', 'REBOOT=ReallySuppress', '/l*v', (Join-Path $ArtifactsDirectory 'msi-upgrade.log'))
+        $uninstallMsi = $UpgradeMsiPath
+        if ((Get-FileHash -LiteralPath $configuration -Algorithm SHA256).Hash -ne $configurationHash -or
+            (Get-ItemPropertyValue -LiteralPath $stateKey -Name $sentinelName) -ne $sentinelValue) {
+            throw 'Upgrade replaced administrator configuration or lifecycle state.'
+        }
+        $upgradedVersion = (& $executable version --json | ConvertFrom-Json)
+        if ($LASTEXITCODE -ne 0 -or $upgradedVersion.version -ne $ExpectedUpgradeExecutableVersion) {
+            throw 'Upgrade did not install the expected executable version.'
+        }
+        $upgradedService = Get-Service wininit
+        try { $upgradedService.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Running, [TimeSpan]::FromSeconds(30)) }
+        finally { $upgradedService.Dispose() }
+        # SCM-running precedes engine lock/checkpoint acquisition. A foreground
+        # contention probe must not race the new service for its first lock.
+        $upgradeReady = $false
+        $upgradeDeadline = [DateTime]::UtcNow.AddSeconds(30)
+        do {
+            $upgradedStatus = (& $executable status --json | ConvertFrom-Json)
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot read upgraded lifecycle status.' }
+            if ($null -ne $upgradedStatus.PSObject.Properties['lifecycle'] -and
+                $upgradedStatus.service -eq 'running' -and $upgradedStatus.provisioning -eq 'disabled' -and
+                $upgradedStatus.lifecycle.phase -eq 'agent_running' -and
+                $upgradedStatus.lifecycle.generation -gt $beforeUpgrade.lifecycle.generation) {
+                $upgradeReady = $true
+                break
+            }
+            Start-Sleep -Milliseconds 250
+        } while ([DateTime]::UtcNow -lt $upgradeDeadline)
+        if (-not $upgradeReady) { throw 'Upgraded service did not acquire a fresh running lifecycle checkpoint.' }
+        Assert-HostNameUnchanged -Expected $originalHostName -Phase 'upgrade'
+    }
+
     $contendedStdout = Join-Path $ArtifactsDirectory 'contended-run.stdout.log'
     $contendedStderr = Join-Path $ArtifactsDirectory 'contended-run.stderr.log'
     $contendedProcess = Start-Process -FilePath $executable `
@@ -254,14 +351,29 @@ try {
     $contendedProcess.Dispose()
     $contendedProcess = $null
 
-    Invoke-MsiExec -Arguments @('/x', $MsiPath, '/qn', '/norestart', '/l*v', $uninstallLog)
+    if ($PluginDistDirectory) {
+        $packagedAgent = Join-Path $PluginDistDirectory 'wininit-windows-amd64.exe'
+        if ((Get-FileHash -LiteralPath $executable -Algorithm SHA256).Hash -ne
+            (Get-FileHash -LiteralPath $packagedAgent -Algorithm SHA256).Hash) {
+            throw 'Installed MSI payload does not match the candidate agent EXE.'
+        }
+        & (Join-Path $PSScriptRoot '..\e2e\guest-scenarios.ps1') -Agent $executable `
+            -DistDirectory $PluginDistDirectory -ArtifactsDirectory $ArtifactsDirectory
+    }
+
+    $preservedConfigurationHash = (Get-FileHash -LiteralPath $configuration -Algorithm SHA256).Hash
+    Invoke-MsiExec -Arguments @('/x', $uninstallMsi, '/qn', '/norestart', 'REBOOT=ReallySuppress', '/l*v', $uninstallLog)
     $installed = $false
     Wait-ServiceAbsent -Name 'wininit'
+    & (Join-Path $PSScriptRoot 'assert-no-msi-product.ps1')
     if (Test-Path -LiteralPath $executable) {
         throw "Executable remains after uninstall: $executable"
     }
     if (-not (Test-Path -LiteralPath $configuration -PathType Leaf)) {
         throw 'The preserved configuration was removed by uninstall.'
+    }
+    if ((Get-FileHash -LiteralPath $configuration -Algorithm SHA256).Hash -ne $preservedConfigurationHash) {
+        throw 'Uninstall modified the preserved configuration.'
     }
     if (Test-Path -LiteralPath $installationKey) {
         throw 'The MSI-owned Installation Registry marker remains after uninstall.'
@@ -287,7 +399,7 @@ finally {
     }
     if ($installed) {
         try {
-            Invoke-MsiExec -Arguments @('/x', $MsiPath, '/qn', '/norestart', '/l*v', $uninstallLog)
+            Invoke-MsiExec -Arguments @('/x', $uninstallMsi, '/qn', '/norestart', 'REBOOT=ReallySuppress', '/l*v', $uninstallLog)
         }
         catch {
             Write-Warning "Cleanup uninstall failed: $_"
