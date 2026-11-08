@@ -119,6 +119,9 @@ See [automated guest suite](../tests/e2e/README.md) for exact commands, ownershi
 reports and self-hosted runner setup. CI uses a lower-version MSI built from the
 same source as an upgrade fixture; it does not establish compatibility with a
 historical release or exercise schema migration from an old executable.
+The [2026-11-08 PR 7 review](../tests/e2e/2026-11-08-pr7-review.md) records a real
+Server 2025 SSH guest run of exact CI artifacts, with four installer groups,
+eleven plugin cases, unchanged names/boot and verified cleanup.
 
 | Evidence | Status |
 | --- | --- |

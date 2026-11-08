@@ -125,6 +125,10 @@ Per-EXE CycloneDX inventories, source/artifact manifest, canonical checksums,
 optional certificate-store Authenticode signing and trusted-tag provenance/SBOM
 attestations prepare draft prereleases. See [release preparation](release.md)
 and ADR 0015 for scope and remaining gates.
+The [PR 7 review run](../tests/e2e/2026-11-08-pr7-review.md) additionally passed
+the same MSI/local-seed suite on the existing Server 2025 Q35 guest over SSH,
+including preserved upgrade state, eleven plugin cases and verified cleanup,
+without changing names or rebooting Windows.
 
 This milestone remains incomplete: the full real guest/media/rename/reboot
 matrix, historical-release upgrade, production certificate verification and

@@ -499,6 +499,11 @@ precondition outside wininit; do not imply the plugin manages groups or sshd.
   only. Labels/manual triggers do not isolate runners from malicious fork
   workflows. Without selected-workflow group controls, use reviewed SSH runs
   and do not register repository-level privileged runners on this public repo.
+- The PR 7 review record tests/e2e/2026-11-08-pr7-review.md records the recovered
+  SSH guest run of exact CI MSI artifacts: all four installer groups and eleven
+  plugin cases passed with unchanged DNS/NetBIOS/boot and verified cleanup.
+  It is same-source upgrade/local-seed/no-reboot evidence, not full matrix,
+  historical migration, production signing or tag/OIDC release validation.
 - Pin third-party actions to immutable commits where practical and keep them
   current through dependency automation.
 - The Windows jobs currently use `actions/setup-dotnet` 6.1.0 to install the
