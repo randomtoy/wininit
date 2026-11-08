@@ -15,9 +15,12 @@ permissions:
 jobs:
   guest:
     name: Server ${{ matrix.server }} / ${{ matrix.provider }}
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     # Administrators provision licensed, disposable, isolated guests. Never
     # route pull_request events or unreviewed forks onto privileged runners.
-    runs-on: [self-hosted, Windows, X64, wininit-e2e, 'server-${{ matrix.server }}', '${{ matrix.provider }}']
+    runs-on:
+      group: wininit-e2e-reviewed
+      labels: [self-hosted, Windows, X64, wininit-e2e, 'server-${{ matrix.server }}', '${{ matrix.provider }}']
     timeout-minutes: 20
     strategy:
       fail-fast: false

@@ -48,14 +48,15 @@ type Artifact struct {
 }
 
 type Manifest struct {
-	SchemaVersion int        `json:"schema_version"`
-	Version       string     `json:"version"`
-	Commit        string     `json:"commit"`
-	Modified      bool       `json:"source_modified"`
-	Target        string     `json:"target"`
-	Signature     string     `json:"authenticode"`
-	SBOMScope     string     `json:"sbom_scope"`
-	Artifacts     []Artifact `json:"artifacts"`
+	SchemaVersion    int        `json:"schema_version"`
+	Version          string     `json:"version"`
+	Commit           string     `json:"commit"`
+	Modified         bool       `json:"source_modified"`
+	CheckoutModified bool       `json:"checkout_modified"`
+	Target           string     `json:"target"`
+	Signature        string     `json:"authenticode"`
+	SBOMScope        string     `json:"sbom_scope"`
+	Artifacts        []Artifact `json:"artifacts"`
 }
 
 var commitPattern = regexp.MustCompile(`^[a-f0-9]{40}$`)
@@ -150,11 +151,15 @@ func checkSBOM(dir, name, version string, info *debug.BuildInfo) error {
 
 // Inventory binds exact binaries and their externally generated SBOMs. MSI
 // construction and Authenticode verification belong to the Windows packager.
-func Inventory(dir, version, commit, signature string, requireClean bool) (Manifest, error) {
+func Inventory(dir, version, commit, signature string, requireClean, checkoutModified bool) (Manifest, error) {
 	m := Manifest{SchemaVersion: 1, Version: version, Commit: commit, Target: "windows/amd64", Signature: signature,
+		Modified: checkoutModified, CheckoutModified: checkoutModified,
 		SBOMScope: "Per-EXE Go build-info module inventories including stdlib; MSI contains the agent EXE and default configuration. No OS, WiX, license, or vulnerability completeness claim."}
 	if err := validateOptions(version, commit, signature); err != nil {
 		return m, err
+	}
+	if requireClean && checkoutModified {
+		return m, errors.New("release requires a clean source checkout")
 	}
 	for _, name := range Names() {
 		if name == ManifestName {
@@ -203,8 +208,8 @@ func checksumContent(dir string) ([]byte, error) {
 	return []byte(result.String()), nil
 }
 
-func Generate(dir, version, commit, signature string, requireClean bool) error {
-	m, err := Inventory(dir, version, commit, signature, requireClean)
+func Generate(dir, version, commit, signature string, requireClean, checkoutModified bool) error {
+	m, err := Inventory(dir, version, commit, signature, requireClean, checkoutModified)
 	if err != nil {
 		return err
 	}
@@ -233,7 +238,7 @@ func Verify(dir string, requireClean bool) error {
 	if err := json.Unmarshal(data, &actual); err != nil {
 		return err
 	}
-	expected, err := Inventory(dir, actual.Version, actual.Commit, actual.Signature, requireClean)
+	expected, err := Inventory(dir, actual.Version, actual.Commit, actual.Signature, requireClean, actual.CheckoutModified)
 	if err != nil {
 		return err
 	}

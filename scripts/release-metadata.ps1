@@ -22,8 +22,12 @@ try {
             -output "$binary.cdx.json" $binary
         if ($LASTEXITCODE -ne 0) { throw "SBOM generation failed for $name." }
     }
+    # Recheck after the build/SBOM steps: SkipBuild may reuse clean EXEs while
+    # the MSI's WiX/configuration inputs come from a modified working tree.
+    $checkoutModified = & (Join-Path $PSScriptRoot 'source-status.ps1') -RequireClean:$RequireClean
     $arguments = @('run', './cmd/wininit-release', '-dist', $dist, '-version', $Version, '-commit', $commit, '-signature', $Signature)
     if ($RequireClean) { $arguments += '-require-clean' }
+    if ($checkoutModified) { $arguments += '-checkout-modified' }
     & go @arguments
     if ($LASTEXITCODE -ne 0) { throw 'Release inventory generation failed.' }
     & go run ./cmd/wininit-release -dist $dist -verify

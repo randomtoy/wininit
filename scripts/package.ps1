@@ -13,6 +13,9 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+# Check before running prebuilt executables, signing or compiling WiX. Their
+# embedded VCS bits alone cannot describe changed installer/configuration files.
+& (Join-Path $PSScriptRoot 'source-status.ps1') -RequireClean:$RequireClean | Out-Null
 if (-not $DistDirectory) {
     $DistDirectory = Join-Path $repoRoot 'dist'
 }

@@ -53,12 +53,23 @@ See [release gates](../../docs/release.md) for remaining validation.
 
 `.github/workflows/e2e.yml` is manual-only and has four cells:
 Server 2022/2025 × QEMU/OpenStack. Provision disposable isolated licensed guests
-and an elevated self-hosted runner per cell with labels `wininit-e2e`,
+and an elevated self-hosted runner per cell in group `wininit-e2e-reviewed`, with labels `wininit-e2e`,
 `server-2022` or `server-2025`, and `qemu` or `openstack` (plus the normal
 `self-hosted`, `Windows`, `X64`). Git, GitHub CLI, runner dependencies and outbound
 artifact access must already work; Windows PowerShell 5.1 runs acceptance.
 
-Dispatch only a reviewed repository commit and provide its successful **push**
+Before registering any runner, restrict that organization's runner group to
+this repository and the **selected workflow**
+`randomtoy/wininit/.github/workflows/e2e.yml@refs/heads/main` in GitHub settings.
+Labels and a manual trigger alone do not prevent a fork PR from targeting a
+public repository's privileged runner from another workflow. See
+[GitHub runner access controls](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/manage-access).
+If these workflow restrictions are unavailable, use the reviewed harness over
+administrator-controlled SSH on disposable guests; do not register a repo-level
+privileged runner here. This workflow never falls back to an unrestricted group.
+No runner/group settings are created by the repository.
+
+Dispatch on reviewed `main` only and provide its successful **push**
 CI run ID. The workflow checks repository, workflow identity, successful
 conclusion and exact source SHA before downloading artifacts, then checks the
 manifest source. Never route pull-request/fork code to these privileged guests.

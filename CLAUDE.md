@@ -441,6 +441,11 @@ precondition outside wininit; do not imply the plugin manages groups or sshd.
   record source_modified. Integrity verification is not publisher authentication.
   Verify the agent CLI's version/commit labels even with SkipBuild, in addition
   to all EXEs' own Go VCS build information.
+  Check real Git status before any build/signing and before inventory emission,
+  even for SkipBuild. checkout_modified records installer/non-Go source changes;
+  source_modified aggregates it with embedded binary dirty bits. Clean bundle
+  verification rejects either. Exercise modified WiX input with clean EXEs in
+  an owned detached test worktree; never modify the main checkout in tests.
 
 ## CI/CD instructions
 
@@ -482,12 +487,18 @@ precondition outside wininit; do not imply the plugin manages groups or sshd.
   provenance and five EXE SBOMs, then uploads offline verification bundles.
   Pin actions/attest v4.2.2; do not give PR jobs signing permissions. Actual tag
   attestation remains unexecuted until an authorized release tag exists.
+  The artifact-only draft publisher must declare GH_REPO explicitly.
 - Manual guest E2E workflow targets four administrator-provisioned, licensed,
   isolated self-hosted Server 2022/2025 × QEMU/OpenStack runners. Only reviewed
   workflow_dispatch is allowed; bind downloads to successful push CI from this
   repository and exact source commit. Never run PR/fork events on these runners.
   Provider labels are declared, not proof of placement/acceleration. Full media,
   clean-image, historical-upgrade and reboot matrix remain stage-7 gates.
+  Require the wininit-e2e-reviewed organization runner group restricted in
+  GitHub settings to this repository's e2e.yml@refs/heads/main; dispatch main
+  only. Labels/manual triggers do not isolate runners from malicious fork
+  workflows. Without selected-workflow group controls, use reviewed SSH runs
+  and do not register repository-level privileged runners on this public repo.
 - Pin third-party actions to immutable commits where practical and keep them
   current through dependency automation.
 - The Windows jobs currently use `actions/setup-dotnet` 6.1.0 to install the

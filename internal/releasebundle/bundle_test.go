@@ -84,7 +84,7 @@ func TestSBOMRequiresVersionedModuleInventory(t *testing.T) {
 
 func TestGenerateDoesNotInventArtifacts(t *testing.T) {
 	dir := t.TempDir()
-	if err := Generate(dir, "1.2.3", testCommit, "unsigned", true); err == nil {
+	if err := Generate(dir, "1.2.3", testCommit, "unsigned", true, false); err == nil {
 		t.Fatal("accepted absent distribution")
 	}
 	if _, err := os.Stat(filepath.Join(dir, ManifestName)); !os.IsNotExist(err) {
@@ -97,6 +97,17 @@ func TestGenerateDoesNotInventArtifacts(t *testing.T) {
 	}
 	if err := validateOptions("1.2.3", testCommit, "trusted"); err == nil {
 		t.Fatal("invented signature status")
+	}
+}
+
+func TestRequireCleanRejectsModifiedInstallerCheckoutBeforeInventory(t *testing.T) {
+	dir := t.TempDir()
+	err := Generate(dir, "1.2.3", testCommit, "unsigned", true, true)
+	if err == nil || !strings.Contains(err.Error(), "clean source checkout") {
+		t.Fatalf("dirty installer checkout was not rejected: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ManifestName)); !os.IsNotExist(err) {
+		t.Fatal("published a clean manifest for a modified checkout")
 	}
 }
 

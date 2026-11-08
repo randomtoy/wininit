@@ -20,6 +20,48 @@ try {
     }
     & $tool -verify -require-clean -dist $fixture
     if ($LASTEXITCODE -ne 0) { throw 'Valid clean distribution failed verification.' }
+    # Reuse actual clean EXEs while modifying only installer input at the same
+    # commit. Embedded Go VCS bits must not hide this SkipBuild source change.
+    $checkout = Join-Path $fixture 'source checkout'
+    $worktreeAdded = $false
+    $manifestPath = Join-Path $fixture 'release-manifest.json'
+    $sumsPath = Join-Path $fixture 'SHA256SUMS'
+    $originalManifest = [IO.File]::ReadAllBytes($manifestPath)
+    $originalSums = [IO.File]::ReadAllBytes($sumsPath)
+    try {
+        & git -C $repoRoot worktree add --detach $checkout HEAD
+        if ($LASTEXITCODE -ne 0) { throw 'Source-status regression worktree creation failed.' }
+        $worktreeAdded = $true
+        [IO.File]::AppendAllText((Join-Path $checkout 'packaging\wix\wininit.yaml'), "`n# modified installer input`n")
+        $modified = & (Join-Path $checkout 'scripts\source-status.ps1')
+        if (-not $modified) { throw 'Installer-only source modification was not detected.' }
+        $refusedDirtyCheckout = $false
+        try {
+            & (Join-Path $checkout 'scripts\package.ps1') -Version $manifest.version -SkipBuild -RequireClean -DistDirectory $fixture
+        } catch {
+            if ($_.Exception.Message -notlike 'RequireClean refuses a modified source checkout*') { throw }
+            $refusedDirtyCheckout = $true
+        }
+        if (-not $refusedDirtyCheckout) { throw 'SkipBuild accepted modified MSI sources with RequireClean.' }
+        & $tool -dist $fixture -version $manifest.version -commit $manifest.commit -signature $manifest.authenticode -checkout-modified
+        if ($LASTEXITCODE -ne 0) { throw 'Modified-checkout development inventory generation failed.' }
+        $modifiedManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+        if (-not $modifiedManifest.source_modified -or -not $modifiedManifest.checkout_modified) {
+            throw 'Development inventory falsely declared clean installer sources.'
+        }
+        & $tool -verify -dist $fixture
+        if ($LASTEXITCODE -ne 0) { throw 'Valid declared-modified development inventory was rejected.' }
+        & $tool -verify -require-clean -dist $fixture 2>&1 | Out-Host
+        if ($LASTEXITCODE -eq 0) { throw 'Clean verification accepted a modified installer checkout.' }
+    }
+    finally {
+        [IO.File]::WriteAllBytes($manifestPath, $originalManifest)
+        [IO.File]::WriteAllBytes($sumsPath, $originalSums)
+        if ($worktreeAdded) {
+            & git -C $repoRoot worktree remove --force $checkout
+            if ($LASTEXITCODE -ne 0) { throw 'Owned source-status worktree cleanup failed.' }
+        }
+    }
     $rejected = $false
     try {
         & (Join-Path $repoRoot 'scripts\sign.ps1') -Paths @((Join-Path $fixture 'wininit-windows-amd64.exe')) `

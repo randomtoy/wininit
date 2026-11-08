@@ -15,13 +15,14 @@ func main() {
 	commit := flag.String("commit", "", "source commit")
 	signature := flag.String("signature", "unsigned", "packager-verified Authenticode status")
 	clean := flag.Bool("require-clean", false, "reject modified source checkouts")
+	checkoutModified := flag.Bool("checkout-modified", false, "packager reports modified checkout inputs, including MSI sources")
 	verify := flag.Bool("verify", false, "verify existing inventory and checksums")
 	flag.Parse()
 	var err error
 	if *verify {
 		err = releasebundle.Verify(*dir, *clean)
 	} else {
-		err = releasebundle.Generate(*dir, *version, *commit, *signature, *clean)
+		err = releasebundle.Generate(*dir, *version, *commit, *signature, *clean, *checkoutModified)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

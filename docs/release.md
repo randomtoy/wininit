@@ -17,7 +17,12 @@ go run ./cmd/wininit-release -dist ./dist -verify -require-clean
 ```
 
 Use a clean committed checkout for a release. Local development packages may
-omit `-RequireClean`; `source_modified` records their status. `-SkipBuild` still
+omit `-RequireClean`; `source_modified` records their status. The packager checks
+the actual checkout before building/signing and again before inventory creation,
+including with `-SkipBuild`. `checkout_modified` records non-Go changes such as
+WiX/configuration inputs; aggregate `source_modified` also includes dirty bits
+embedded in any EXE. Clean verification rejects either kind of modification.
+`-SkipBuild` still
 checks the installed build metadata and requires all five EXEs from this source
 commit. Numeric versions map to the documented MSI version limits; `v0.0.0`
 cannot be the candidate in the upgrade suite because its fixture is `0.0.0`.
@@ -85,6 +90,8 @@ exact bytes, not product compatibility or a hermetic/reproducible build claim.
 Pull requests receive no attestation signing permissions. Sigstore bundles are
 attached for verification. The final job verifies hashes again and creates a
 **draft prerelease**, never an automatically public stable release.
+The artifact-only publisher sets `GH_REPO` explicitly; it needs no Git checkout
+to resolve the destination repository.
 
 After downloading a candidate from a trusted tag, authenticate the manifest
 first, then verify content. Example with GitHub CLI and a Unix checksum tool:
